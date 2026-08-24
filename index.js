@@ -37,8 +37,8 @@ const AnalyzerSettings = z.object({
     .description('Enable AI completion for unmatched buttons'),
   aiModel: z.string().default('qwen3.7-max')
     .description('LLM model name'),
-  aiBaseUrl: z.string().default('https://llm-ad4bzaba67piv4fj.cn-beijing.maas.aliyuncs.com/compatible-mode/v1')
-    .description('LLM API base URL'),
+  aiBaseUrl: z.string().default('')
+    .description('LLM API base URL (OpenAI-compatible endpoint)'),
   aiApiKey: z.string().role('secret').default('')
     .description('LLM API key (auto-detect from ~/.dsh/.credentials.yaml if empty)'),
   aiTemperature: z.number().default(0.1).min(0).max(1).step(0.05)

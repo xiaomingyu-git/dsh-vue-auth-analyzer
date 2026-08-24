@@ -118,7 +118,7 @@ window.__ModuleLoader__.load({
       i18nFile: "src/lang/package/zh-cn.ts",
       excludePatterns: "**/components/**,**/login/**,**/profile/**",
       aiEnabled: true, aiModel: "qwen3.7-max",
-      aiBaseUrl: "https://llm-ad4bzaba67piv4fj.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      aiBaseUrl: "",
       aiApiKey: "",
     };
 

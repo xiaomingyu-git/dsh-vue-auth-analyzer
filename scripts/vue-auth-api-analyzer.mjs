@@ -44,7 +44,7 @@ const CONFIG = {
   ai: {
     enabled: true,
     apiKey: "",  // Or set env AI_API_KEY
-    baseUrl: "https://llm-ad4bzaba67piv4fj.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    baseUrl: "",  // Set via settings or env AI_BASE_URL
     model: "qwen3.7-max",
     maxRetries: 3,
     temperature: 0.1,
