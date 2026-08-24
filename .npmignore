@@ -1,0 +1,8 @@
+.git
+.gitignore
+*.md
+!README.md
+!README.zh.md
+dist/
+node_modules/
+.env*

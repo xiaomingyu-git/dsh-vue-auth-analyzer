@@ -1,0 +1,4 @@
+# dsh-vue-auth-analyzer bundle layer: register the analyzer as an agent skill.
+- insert:
+    - id: dsh-vue-auth-analyzer
+      name: dsh-vue-auth-analyzer
