@@ -8,7 +8,8 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import z from '@deepseek-ai/schemastery'
 
 export const name = 'dsh-vue-auth-analyzer'
-export const inject = ['skills', 'settings']
+// No top-level inject: use ctx.inject() dynamically like dshmarket does.
+// This ensures graceful degradation when services aren't available yet.
 
 const packageRoot = dirname(fileURLToPath(import.meta.url))
 
@@ -81,39 +82,43 @@ function syncConfigToFile(settings) {
 
 // ─── Plugin entry ───────────────────────────────────────
 export function apply(ctx) {
-  // Register skill
-  const skillPath = join(packageRoot, 'SKILL.md')
-  const { description, body } = splitFrontmatter(readFileSync(skillPath, 'utf8'))
-  ctx.effect(() =>
-    ctx.skills.register({
-      name: 'dsh-vue-auth-analyzer',
-      source: 'bundled',
-      description: description ?? 'Vue 3 button-permission-API mapping analyzer.',
-      content: body,
-      resourceBase: { kind: 'directory', path: packageRoot },
-    }),
-  )
+  // Register skill via dynamic inject (graceful if skills service unavailable)
+  ctx.inject(['skills'], (sctx) => {
+    const skillPath = join(packageRoot, 'SKILL.md')
+    const { description, body } = splitFrontmatter(readFileSync(skillPath, 'utf8'))
+    sctx.effect(() =>
+      sctx.skills.register({
+        name: 'dsh-vue-auth-analyzer',
+        source: 'bundled',
+        description: description ?? 'Vue 3 button-permission-API mapping analyzer.',
+        content: body,
+        resourceBase: { kind: 'directory', path: packageRoot },
+      }),
+    )
+  })
 
-  // Register settings
-  const base = {}
-  try {
-    const scriptCode = readFileSync(join(packageRoot, 'scripts', 'vue-auth-api-analyzer.mjs'), 'utf8')
-    const vm = scriptCode.match(/viewsDir:\s*"([^"]*)"/)
-    if (vm) base.viewsDir = vm[1]
-    const am = scriptCode.match(/authDirectiveName:\s*"([^"]*)"/)
-    if (am) base.authDirectiveName = am[1]
-  } catch {}
+  // Register settings via dynamic inject (graceful if settings service unavailable)
+  ctx.inject(['settings'], (sctx) => {
+    const base = {}
+    try {
+      const scriptCode = readFileSync(join(packageRoot, 'scripts', 'vue-auth-api-analyzer.mjs'), 'utf8')
+      const vm = scriptCode.match(/viewsDir:\s*"([^"]*)"/)
+      if (vm) base.viewsDir = vm[1]
+      const am = scriptCode.match(/authDirectiveName:\s*"([^"]*)"/)
+      if (am) base.authDirectiveName = am[1]
+    } catch {}
 
-  let source = () => base
-  installSettingsSection(ctx, SETTINGS_NS, AnalyzerSettings, base, {
-    setSource: (current) => { source = current },
-    onChange: () => {
-      try {
-        const resolved = source()
-        if (resolved) syncConfigToFile(resolved)
-      } catch (e) {
-        console.error('[dsh-vue-auth-analyzer] Config sync failed:', e?.message)
-      }
-    },
+    let source = () => base
+    installSettingsSection(sctx, SETTINGS_NS, AnalyzerSettings, base, {
+      setSource: (current) => { source = current },
+      onChange: () => {
+        try {
+          const resolved = source()
+          if (resolved) syncConfigToFile(resolved)
+        } catch (e) {
+          console.error('[dsh-vue-auth-analyzer] Config sync failed:', e?.message)
+        }
+      },
+    })
   })
 }
