@@ -30,7 +30,7 @@ const AnalyzerSettings = z.object({
     .description('Vue pages directory relative to project root'),
   authDirectiveName: z.string().default('auth')
     .description('Permission directive name (e.g. "auth" for v-auth, "permission" for v-permission)'),
-  i18nFile: z.string().default('')
+  i18nFile: z.string().default('src/lang/package/zh-cn.ts')
     .description('i18n translation file path (leave empty to skip)'),
   excludePatterns: z.string().default('**/components/**,**/login/**,**/profile/**')
     .description('Comma-separated glob patterns to exclude'),

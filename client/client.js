@@ -19,14 +19,14 @@ window.__ModuleLoader__.load({
       ".ava-name{color:var(--dsw-alias-label-primary,#1f2328);font-size:15px;font-weight:600;line-height:1.4}",
       ".ava-desc{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:13px;line-height:1.5}",
       ".ava-chevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex:none;display:inline-flex;transition:transform .16s}",
-      ".ava-chevron.ava-open{transform:rotate(180deg)}",
+      ".ava-chevron.ava-chevron-open{transform:rotate(180deg)}",
       ".ava-body{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);margin:0 16px;padding-bottom:8px}",
       ".ava-row{display:flex;align-items:center;gap:12px;padding:12px 0}",
       ".ava-row+.ava-row{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb)}",
       ".ava-label-box{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}",
       ".ava-label{font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary,#1f2328)}",
       ".ava-hint{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8b93a1)}",
-      ".ava-input{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-3,#fff);height:34px;font:inherit;color:var(--dsw-alias-label-primary,#1f2328);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5;width:220px;max-width:100%;box-sizing:border-box}",
+      ".ava-input{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-3,#fff);height:34px;font:inherit;color:var(--dsw-alias-label-primary,#1f2328);border-radius:8px;padding:0 12px;font-size:13px;line-height:1.5;width:280px;max-width:100%;box-sizing:border-box}",
       ".ava-input:focus-visible{border-color:var(--dsw-alias-brand-primary,#4f6ef7);outline:none}",
       ".ava-input:disabled{color:var(--dsw-alias-label-tertiary,#8b93a1);cursor:default}",
       ".ava-seg{display:inline-flex;flex-shrink:0;border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:8px;padding:2px;gap:2px}",
@@ -34,10 +34,13 @@ window.__ModuleLoader__.load({
       ".ava-seg-btn:disabled{cursor:default;opacity:.5}",
       ".ava-seg-on{background:var(--dsw-alias-bg-layer-2,#eef0f4);color:var(--dsw-alias-label-primary,#1f2328);font-weight:600}",
       ".ava-actions{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}",
-      ".ava-status{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8b93a1)}",
+      ".ava-status{font-size:12px;line-height:18px;margin-right:auto}",
       ".ava-status-ok{color:var(--dsw-alias-state-success-primary,#16a34a)}",
       ".ava-status-err{color:var(--dsw-alias-state-error-primary,#dc2626)}",
-      ".ava-run-btn{display:flex;align-items:center;gap:6px}",
+      ".ava-secret{position:relative}",
+      ".ava-secret-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px;padding:2px 4px}",
+      ".ava-section-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#6b7280);text-transform:uppercase;letter-spacing:0.5px;padding:16px 0 4px;margin:0}",
+      ".ava-section-title:first-child{padding-top:4px}",
     ].join("\n");
 
     const tagId = "dsh-vue-auth-analyzer/card.css";
@@ -53,6 +56,8 @@ window.__ModuleLoader__.load({
     const zh = {
       nav: "Auth Analyzer",
       cardDesc: "Vue 3 按钮-权限-API 映射分析器配置",
+      sectionBasic: "基础配置",
+      sectionAI: "AI 补全配置",
       viewsDir: "页面目录",
       viewsDirHint: "Vue 页面文件所在目录（相对于项目根目录）",
       authDirective: "权限指令名",
@@ -63,60 +68,75 @@ window.__ModuleLoader__.load({
       excludePatternsHint: "逗号分隔的 glob 模式，匹配的目录不参与扫描",
       aiEnabled: "AI 补全",
       aiEnabledHint: "对静态分析未覆盖的按钮调用 LLM 补全映射",
-      aiModel: "AI 模型",
+      aiModel: "模型",
       aiModelHint: "LLM 模型名称",
-      runAnalysis: "运行分析",
-      runStaticOnly: "仅静态分析",
-      running: "分析中…",
-      idle: "就绪",
-      lastRun: "上次运行",
-      noLastRun: "尚未运行",
+      aiBaseUrl: "API 地址",
+      aiBaseUrlHint: "OpenAI 兼容 API 的 Base URL",
+      aiApiKey: "API Key",
+      aiApiKeyHint: "LLM API Key，留空则从 ~/.dsh/.credentials.yaml 自动读取",
       save: "保存",
-      saved: "已保存",
+      saved: "✓ 已保存",
       saving: "保存中…",
       on: "开",
       off: "关",
+      showKey: "显示",
+      hideKey: "隐藏",
     };
 
     const en = {
       nav: "Auth Analyzer",
       cardDesc: "Vue 3 button-permission-API mapping analyzer configuration",
+      sectionBasic: "Basic",
+      sectionAI: "AI Completion",
       viewsDir: "Views Directory",
       viewsDirHint: "Vue pages directory relative to project root",
       authDirective: "Auth Directive",
-      authDirectiveHint: "The name in v-auth; use \"permission\" for v-permission",
+      authDirectiveHint: 'The name in v-auth; use "permission" for v-permission',
       i18nFile: "i18n File",
       i18nFileHint: "Path to i18n translation file; leave empty to skip",
       excludePatterns: "Exclude Patterns",
       excludePatternsHint: "Comma-separated glob patterns to exclude from scanning",
       aiEnabled: "AI Completion",
       aiEnabledHint: "Use LLM to complete mappings for buttons not covered by static analysis",
-      aiModel: "AI Model",
+      aiModel: "Model",
       aiModelHint: "LLM model name",
-      runAnalysis: "Run Analysis",
-      runStaticOnly: "Static Only",
-      running: "Running…",
-      idle: "Ready",
-      lastRun: "Last Run",
-      noLastRun: "Not yet run",
+      aiBaseUrl: "API Base URL",
+      aiBaseUrlHint: "OpenAI-compatible API base URL",
+      aiApiKey: "API Key",
+      aiApiKeyHint: "LLM API key; leave empty to auto-detect from ~/.dsh/.credentials.yaml",
       save: "Save",
-      saved: "Saved",
+      saved: "✓ Saved",
       saving: "Saving…",
       on: "On",
       off: "Off",
+      showKey: "Show",
+      hideKey: "Hide",
     };
 
     // ─── Settings namespace ─────────────────────────────────
     const NS = "dsh-vue-auth-analyzer";
 
+    // ─── Default values (matching server-side schema) ───────
+    const DEFAULTS = {
+      viewsDir: "src/views",
+      authDirectiveName: "auth",
+      i18nFile: "src/lang/package/zh-cn.ts",
+      excludePatterns: "**/components/**,**/login/**,**/profile/**",
+      aiEnabled: true,
+      aiModel: "qwen3.7-max",
+      aiBaseUrl: "https://llm-ad4bzaba67piv4fj.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      aiApiKey: "",
+    };
+
     // ─── AnalyzerCard component ─────────────────────────────
     function AnalyzerCard(props) {
       var t = props.t;
+      var h = react.createElement;
+
       var _useState = react.useState(false);
       var open = _useState[0];
       var setOpen = _useState[1];
 
-      // Read current settings from the host
       var _useState2 = react.useState(null);
       var settings = _useState2[0];
       var setSettings = _useState2[1];
@@ -125,22 +145,17 @@ window.__ModuleLoader__.load({
       var saveState = _useState3[0];
       var setSaveState = _useState3[1];
 
-      var _useState4 = react.useState(null);
-      var runStatus = _useState4[0];
-      var setRunStatus = _useState4[1];
+      var _useState4 = react.useState({});
+      var drafts = _useState4[0];
+      var setDrafts = _useState4[1];
 
       var _useState5 = react.useState(false);
-      var running = _useState5[0];
-      var setRunning = _useState5[1];
-
-      // Local drafts
-      var _useState6 = react.useState({});
-      var drafts = _useState6[0];
-      var setDrafts = _useState6[1];
+      var showKey = _useState5[0];
+      var setShowKey = _useState5[1];
 
       // Load settings when card opens
       react.useEffect(function() {
-        if (!open || settings) return;
+        if (!open || settings !== null) return;
         var live = true;
         (async function() {
           try {
@@ -148,19 +163,20 @@ window.__ModuleLoader__.load({
             if (res.ok) {
               var body = await res.json();
               if (live) setSettings(body.value || body);
+            } else {
+              if (live) setSettings({});
             }
           } catch(e) {
-            // Settings API may not be available; use defaults
             if (live) setSettings({});
           }
         })();
         return function() { live = false; };
       }, [open]);
 
-      var current = function(key, fallback) {
+      var current = function(key) {
         if (drafts[key] !== undefined) return drafts[key];
         if (settings && settings[key] !== undefined) return settings[key];
-        return fallback;
+        return DEFAULTS[key];
       };
 
       var setDraft = function(key, value) {
@@ -183,7 +199,6 @@ window.__ModuleLoader__.load({
             body: JSON.stringify(drafts),
           });
           if (res.ok) {
-            var body = await res.json();
             setSettings(function(prev) { return Object.assign({}, prev || {}, drafts); });
             setDrafts({});
             setSaveState("saved");
@@ -196,32 +211,6 @@ window.__ModuleLoader__.load({
         }
       };
 
-      var onRun = async function(staticOnly) {
-        setRunning(true);
-        setRunStatus(null);
-        try {
-          var args = staticOnly ? ["--static-only"] : [];
-          var res = await fetch("/api/tools/bash", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              command: "node scripts/vue-auth-api-analyzer.mjs " + args.join(" "),
-              description: "Run auth analyzer",
-              workdir: ".",
-            }),
-          });
-          if (res.ok) {
-            setRunStatus({ ok: true, time: new Date().toLocaleTimeString() });
-          } else {
-            setRunStatus({ ok: false, error: "HTTP " + res.status });
-          }
-        } catch(e) {
-          setRunStatus({ ok: false, error: e.message || String(e) });
-        }
-        setRunning(false);
-      };
-
-      var h = react.createElement;
       var IconChevronDown = primitives.IconChevronDownOutline14 || primitives.IconSettingsOutline14;
       var Button = primitives.Button;
 
@@ -239,64 +228,63 @@ window.__ModuleLoader__.load({
         return h("input", {
           className: "ava-input",
           type: "text",
-          value: current(key, ""),
+          value: current(key) || "",
           placeholder: placeholder || "",
           onChange: function(e) { setDraft(key, e.target.value); },
         });
       };
 
+      var secretInput = function(key, placeholder) {
+        return h("div", { className: "ava-secret" },
+          h("input", {
+            className: "ava-input",
+            type: showKey ? "text" : "password",
+            value: current(key) || "",
+            placeholder: placeholder || "",
+            onChange: function(e) { setDraft(key, e.target.value); },
+          }),
+          h("button", {
+            type: "button",
+            className: "ava-secret-toggle",
+            onClick: function() { setShowKey(!showKey); },
+          }, showKey ? t("hideKey") : t("showKey"))
+        );
+      };
+
+      var sectionTitle = function(text) {
+        return h("div", { className: "ava-section-title" }, text);
+      };
+
       var body = open ? h("div", { className: "ava-body" },
+        sectionTitle(t("sectionBasic")),
         row(t("viewsDir"), t("viewsDirHint"), textInput("viewsDir", "src/views")),
         row(t("authDirective"), t("authDirectiveHint"), textInput("authDirectiveName", "auth")),
-        row(t("i18nFile"), t("i18nFileHint"), textInput("i18nFile", "")),
+        row(t("i18nFile"), t("i18nFileHint"), textInput("i18nFile", "src/lang/package/zh-cn.ts")),
         row(t("excludePatterns"), t("excludePatternsHint"), textInput("excludePatterns", "**/components/**,**/login/**")),
+
+        sectionTitle(t("sectionAI")),
         row(t("aiEnabled"), t("aiEnabledHint"),
           h("div", { className: "ava-seg" },
             h("button", {
               type: "button",
-              className: "ava-seg-btn" + (current("aiEnabled", true) ? " ava-seg-on" : ""),
+              className: "ava-seg-btn" + (current("aiEnabled") !== false ? " ava-seg-on" : ""),
               onClick: function() { setDraft("aiEnabled", true); },
             }, t("on")),
             h("button", {
               type: "button",
-              className: "ava-seg-btn" + (!current("aiEnabled", true) ? " ava-seg-on" : ""),
+              className: "ava-seg-btn" + (current("aiEnabled") === false ? " ava-seg-on" : ""),
               onClick: function() { setDraft("aiEnabled", false); },
             }, t("off"))
           )
         ),
         row(t("aiModel"), t("aiModelHint"), textInput("aiModel", "qwen3.7-max")),
-        // Action row
-        h("div", { className: "ava-row" },
-          h("div", { className: "ava-label-box" },
-            h("div", { className: "ava-label" }, t("runAnalysis")),
-            h("div", { className: "ava-hint" },
-              runStatus
-                ? (runStatus.ok
-                    ? h("span", { className: "ava-status ava-status-ok" }, "✓ " + t("lastRun") + ": " + runStatus.time)
-                    : h("span", { className: "ava-status ava-status-err" }, "✗ " + runStatus.error))
-                : t("noLastRun")
-            )
-          ),
-          h("div", { className: "ava-run-btn" },
-            h(Button, {
-              variant: "outline",
-              size: "sm",
-              disabled: running,
-              onClick: function() { onRun(true); },
-            }, t("runStaticOnly")),
-            h(Button, {
-              variant: "primary",
-              size: "sm",
-              disabled: running,
-              onClick: function() { onRun(false); },
-            }, running ? t("running") : t("runAnalysis"))
-          )
-        ),
-        // Save row
+        row(t("aiBaseUrl"), t("aiBaseUrlHint"), textInput("aiBaseUrl", "https://...")),
+        row(t("aiApiKey"), t("aiApiKeyHint"), secretInput("aiApiKey", "sk-...")),
+
         hasChanges ? h("div", { className: "ava-actions" },
-          h("span", { className: "ava-status" },
-            saveState === "saved" ? t("saved") : saveState === "saving" ? t("saving") : ""
-          ),
+          h("span", {
+            className: "ava-status" + (saveState === "saved" ? " ava-status-ok" : saveState === "error" ? " ava-status-err" : "")
+          }, saveState === "saved" ? t("saved") : saveState === "saving" ? t("saving") : ""),
           h(Button, {
             variant: "primary",
             size: "sm",
@@ -317,7 +305,7 @@ window.__ModuleLoader__.load({
             h("div", { className: "ava-name" }, t("nav")),
             h("div", { className: "ava-desc" }, t("cardDesc"))
           ),
-          h("span", { className: "ava-chevron" + (open ? " ava-open" : "") },
+          h("span", { className: "ava-chevron" + (open ? " ava-chevron-open" : "") },
             h(IconChevronDown, { size: 14 })
           )
         ),
@@ -330,11 +318,9 @@ window.__ModuleLoader__.load({
     var inject = ["slots", "locale"];
 
     function apply(ctx) {
-      // Register locale dictionaries
       ctx.locale.register(NS, { zh: zh, en: en });
       var t = ctx.locale.bind(NS);
 
-      // Register into settings.plugin.item slot
       var settingsCtx = ctx;
       settingsCtx.inject(["settingsScope"], function(scoped) {
         scoped.slots.inject("settings.plugin.item", function() {

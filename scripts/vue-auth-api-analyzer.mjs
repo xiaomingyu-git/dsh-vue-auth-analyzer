@@ -39,7 +39,7 @@ const CONFIG = {
   viewsDir: "src/views",
   excludePatterns: ["**/components/**", "**/login/**", "**/profile/**"],
   authDirectiveName: "auth",  // Change to "permission", "has", etc.
-  i18nFile: null,  // Set to your i18n file path
+  i18nFile: "src/lang/package/zh-cn.ts",  // Set to your i18n file path
   outputDir: "dist",
   ai: {
     enabled: true,
