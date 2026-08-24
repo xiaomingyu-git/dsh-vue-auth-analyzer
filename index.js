@@ -1,15 +1,14 @@
 // dsh-vue-auth-analyzer bundle entry point.
-// Registers agent skill + Settings namespace for GUI configuration.
+// Registers agent skill + Settings namespace + HTTP routes for GUI.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { spawn } from 'node:child_process'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 
 export const name = 'dsh-vue-auth-analyzer'
-// No top-level inject: use ctx.inject() dynamically like dshmarket does.
-// This ensures graceful degradation when services aren't available yet.
 
 const packageRoot = dirname(fileURLToPath(import.meta.url))
 
@@ -80,6 +79,9 @@ function syncConfigToFile(settings) {
   writeFileSync(scriptPath, code, 'utf8')
 }
 
+// ─── Active run state (for cancel/status) ───────────────
+let activeRun = null // { child, abortController }
+
 // ─── Plugin entry ───────────────────────────────────────
 export function apply(ctx) {
   // Register skill via dynamic inject (graceful if skills service unavailable)
@@ -118,6 +120,120 @@ export function apply(ctx) {
         } catch (e) {
           console.error('[dsh-vue-auth-analyzer] Config sync failed:', e?.message)
         }
+      },
+    })
+  })
+
+  // Register HTTP routes via dynamic inject (graceful if webServer unavailable)
+  ctx.inject(['webServer'], (host) => {
+    const scriptPath = join(packageRoot, 'scripts', 'vue-auth-api-analyzer.mjs')
+
+    // POST /dsh-vue-auth-analyzer/run — start analysis with NDJSON streaming
+    host.register({
+      kind: 'exact',
+      path: '/dsh-vue-auth-analyzer/run',
+      handler: async (request, response) => {
+        if (request.method !== 'POST') {
+          response.writeHead(405, { allow: 'POST' })
+          response.end()
+          return
+        }
+
+        // Cancel any existing run
+        if (activeRun) {
+          activeRun.child.kill('SIGINT')
+          activeRun = null
+        }
+
+        let body = ''
+        for await (const chunk of request) body += chunk
+        let opts = {}
+        try { opts = JSON.parse(body || '{}') } catch {}
+
+        const args = ['--ndjson']
+        if (opts.staticOnly) args.push('--static-only')
+        if (opts.noCache) args.push('--no-cache')
+
+        // Determine working directory (project root)
+        const cwd = opts.cwd || process.cwd()
+
+        response.writeHead(200, {
+          'content-type': 'application/x-ndjson; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+        })
+
+        const child = spawn(process.execPath, [scriptPath, ...args], {
+          cwd,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env },
+        })
+
+        activeRun = { child }
+
+        child.stdout.on('data', (chunk) => {
+          response.write(chunk)
+        })
+
+        child.stderr.on('data', (chunk) => {
+          // Forward stderr as error events
+          const lines = chunk.toString().split('\n').filter(l => l.trim())
+          for (const line of lines) {
+            response.write(JSON.stringify({ type: 'stderr', message: line }) + '\n')
+          }
+        })
+
+        child.on('close', (code) => {
+          activeRun = null
+          response.write(JSON.stringify({ type: 'exit', code }) + '\n')
+          response.end()
+        })
+
+        child.on('error', (err) => {
+          activeRun = null
+          response.write(JSON.stringify({ type: 'error', message: err.message }) + '\n')
+          response.end()
+        })
+
+        // If client disconnects, kill the child
+        request.on('close', () => {
+          if (activeRun && activeRun.child === child) {
+            child.kill('SIGINT')
+            activeRun = null
+          }
+        })
+      },
+    })
+
+    // POST /dsh-vue-auth-analyzer/cancel — cancel active run
+    host.register({
+      kind: 'exact',
+      path: '/dsh-vue-auth-analyzer/cancel',
+      handler: (request, response) => {
+        if (request.method !== 'POST') {
+          response.writeHead(405, { allow: 'POST' })
+          response.end()
+          return
+        }
+        if (activeRun) {
+          activeRun.child.kill('SIGINT')
+          activeRun = null
+          response.writeHead(200, { 'content-type': 'application/json' })
+          response.end(JSON.stringify({ ok: true }))
+        } else {
+          response.writeHead(200, { 'content-type': 'application/json' })
+          response.end(JSON.stringify({ ok: true, message: 'no active run' }))
+        }
+      },
+    })
+
+    // GET /dsh-vue-auth-analyzer/status — check if running
+    host.register({
+      kind: 'exact',
+      path: '/dsh-vue-auth-analyzer/status',
+      handler: (request, response) => {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ running: activeRun !== null }))
       },
     })
   })

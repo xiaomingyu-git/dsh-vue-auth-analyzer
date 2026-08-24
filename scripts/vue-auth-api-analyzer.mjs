@@ -56,17 +56,24 @@ const CONFIG = {
 // Module-level variables set by main()
 let ROOT = process.cwd();
 let SRC_DIR = path.join(ROOT, CONFIG.viewsDir);
+let NDJSON_MODE = false;
+
+function emit(event) {
+  if (!NDJSON_MODE) return;
+  process.stdout.write(JSON.stringify(event) + "\n");
+}
 
 // ============================================================
 // CLI
 // ============================================================
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { staticOnly: false, aiOnly: false, noCache: false, help: false };
+  const opts = { staticOnly: false, aiOnly: false, noCache: false, help: false, ndjson: false };
   for (const a of args) {
     if (a === "--static-only") opts.staticOnly = true;
     else if (a === "--ai-only") opts.aiOnly = true;
     else if (a === "--no-cache") opts.noCache = true;
+    else if (a === "--ndjson") opts.ndjson = true;
     else if (a === "--help" || a === "-h") opts.help = true;
   }
   return opts;
@@ -2766,6 +2773,7 @@ async function runAICompletion() {
 
   console.log("📊 静态分析覆盖率: " + (totalButtons - unmatched.length) + "/" + totalButtons + " (" + ((totalButtons - unmatched.length) / totalButtons * 100).toFixed(1) + "%)");
   console.log("🔍 需要 AI 补全的按钮: " + unmatched.length + " 个\n");
+  emit({ type: "ai-start", total: unmatched.length, coverage: ((totalButtons - unmatched.length) / totalButtons * 100).toFixed(1) });
 
   if (unmatched.length === 0) {
     console.log("✅ 所有按钮已关联 API，无需 AI 补全");
@@ -2782,11 +2790,13 @@ async function runAICompletion() {
   for (let i = 0; i < unmatched.length; i++) {
     const button = unmatched[i];
     console.log("[" + (i + 1) + "/" + unmatched.length + "] 分析: " + button.page + " | " + button.authValue + " | " + button.name);
+    emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "analyzing" });
 
     // 检查缓存
     const cacheKey = button.page + "|" + button.authValue;
     if (cache[cacheKey]) {
       console.log("  💾 命中缓存");
+      emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "cache-hit" });
       results.push({ ...button, ...cache[cacheKey], source: "cache" });
       hitCount++;
       continue;
@@ -2821,6 +2831,7 @@ async function runAICompletion() {
       results.push({ ...button, ...result, source: "llm" });
       cache[cacheKey] = result;
       missCount++;
+      emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "done", confidence: result.confidence });
 
     } catch (err) {
       console.log("  ❌ 分析失败: " + err.message);
@@ -2831,6 +2842,7 @@ async function runAICompletion() {
         reasoning: err.message,
         source: "error"
       });
+      emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "failed", error: err.message });
     }
 
     // 请求间隔，避免限流
@@ -2861,6 +2873,7 @@ async function runAICompletion() {
   fs.writeFileSync(config.outputFile, JSON.stringify(output, null, 2), "utf-8");
 
   // 6. 打印摘要
+  emit({ type: "ai-done", stats: output.stats });
   console.log("\n" + "=".repeat(60));
   console.log("📋 AI 补全分析完成");
   console.log("=".repeat(60));
@@ -2951,6 +2964,15 @@ function mergeResults(staticData, aiData) {
 async function main() {
   const opts = parseArgs();
   if (opts.help) { printHelp(); return; }
+  NDJSON_MODE = opts.ndjson;
+
+  // Handle SIGINT for graceful cancellation
+  let cancelled = false;
+  process.on("SIGINT", () => {
+    cancelled = true;
+    emit({ type: "cancelled" });
+    process.exit(130);
+  });
 
   ROOT = CONFIG.rootDir;
   SRC_DIR = path.join(ROOT, CONFIG.viewsDir);
@@ -2966,6 +2988,7 @@ async function main() {
   let aiData = null;
 
   if (!opts.aiOnly) {
+    emit({ type: "phase", phase: "static", label: "Static Analysis" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 1: Static Analysis");
     console.log("=".repeat(60));
@@ -2982,6 +3005,7 @@ async function main() {
   }
 
   if (!opts.staticOnly && CONFIG.ai.enabled) {
+    emit({ type: "phase", phase: "ai", label: "AI Completion" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 2: AI Completion");
     console.log("=".repeat(60));
@@ -2997,6 +3021,7 @@ async function main() {
   }
 
   if (staticData) {
+    emit({ type: "phase", phase: "merge", label: "Merge Results" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 3: Merge Results");
     console.log("=".repeat(60));
@@ -3007,6 +3032,7 @@ async function main() {
   }
 
   console.log("\nDone!");
+  emit({ type: "done" });
 }
 
 main().catch((err) => { console.error("Fatal:", err); process.exit(1); });
