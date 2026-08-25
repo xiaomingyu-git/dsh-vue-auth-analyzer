@@ -34,18 +34,18 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 
 #### ⚠️ 核心规则
 
-- **每批最多 5 个 subagent**，绝不超过
+- **每批最多 2 个 subagent**，绝不超过
 - **等当前批次全部完成后再启动下一批**
 - **不要自己写合并脚本**，用 `--merge-ai` 命令
 
 #### 3.1 读取任务列表
 
-读取 `dist/ai-tasks.json` 中的 `tasks` 数组。如果任务数 > 5，分成多批：
+读取 `dist/ai-tasks.json` 中的 `tasks` 数组。如果任务数 > 2，分成多批：
 
 ```
-批次 1: tasks[0..4]   (最多5个)
-批次 2: tasks[5..9]   (最多5个)
-批次 3: tasks[10..14] (最多5个)
+批次 1: tasks[0..1]   (最多2个)
+批次 2: tasks[2..3]   (最多2个)
+批次 3: tasks[4..5]   (最多2个)
 ...依此类推
 ```
 

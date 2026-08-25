@@ -2733,7 +2733,7 @@ async function prepareAITasks() {
   console.log("   缓存命中模块: " + cachedModules + " 个");
   console.log("\n💡 请使用 agent 读取 " + tasksFile + " 并用 subagent 并发处理每个任务");
   // Build batch plan (max 5 per batch)
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 2;
   const batches = [];
   for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
     batches.push(tasks.slice(i, i + BATCH_SIZE).map(t => ({ module: t.module, buttons: t.buttons.length, outputFile: t.outputFile })));
