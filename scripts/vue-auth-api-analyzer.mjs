@@ -68,12 +68,14 @@ function emit(event) {
 // ============================================================
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { staticOnly: false, aiOnly: false, noCache: false, help: false, ndjson: false };
+  const opts = { staticOnly: false, aiOnly: false, noCache: false, help: false, ndjson: false, prepareAi: false, mergeAi: false };
   for (const a of args) {
     if (a === "--static-only") opts.staticOnly = true;
     else if (a === "--ai-only") opts.aiOnly = true;
     else if (a === "--no-cache") opts.noCache = true;
     else if (a === "--ndjson") opts.ndjson = true;
+    else if (a === "--prepare-ai") opts.prepareAi = true;
+    else if (a === "--merge-ai") opts.mergeAi = true;
     else if (a === "--help" || a === "-h") opts.help = true;
   }
   return opts;
@@ -2603,61 +2605,241 @@ function loadAIConfig() {
   };
 }
 
-// ─── LLM 调用（带 retry + structured output）─────────────
-async function callLLM(config, messages) {
-  const url = config.baseUrl + "/chat/completions";
+// ─── 按模块分组 + 准备 AI 任务 ────────────────────────────
+// 不再自己调用 LLM，而是输出结构化任务文件，由 DSH agent 通过 subagent 并发处理
 
-  for (let attempt = 0; attempt < config.maxRetries; attempt++) {
+async function collectModuleFiles(buttons, rootDir) {
+  // Collect all relevant files for a group of buttons in the same module
+  const allFiles = new Set();
+  for (const button of buttons) {
+    const absFile = path.join(rootDir, button.file);
+    const pageDir = path.dirname(absFile);
+    const vueFiles = await fg("**/*.vue", { cwd: pageDir, absolute: true });
+    const apiFiles = await fg("**/api/index.ts", { cwd: pageDir, absolute: true });
+    const parentApi = await fg("api/index.ts", { cwd: path.dirname(pageDir), absolute: true });
+    [...vueFiles, ...apiFiles, ...parentApi].forEach(f => allFiles.add(f));
+  }
+  return [...allFiles];
+}
+
+function buildBatchPrompt(moduleName, buttons, fileContents) {
+  const filesSection = fileContents
+    .map(({ filePath, content }) => "### File: " + filePath + "\n```\n" + content + "\n```")
+    .join("\n\n");
+
+  const buttonsList = buttons.map((b, i) => {
+    const authClean = (b.authValue || "").replace(/['"]/g, "");
+    return (i + 1) + ". v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | 标签: " + (b.tag || "") + " | 文件: " + b.file;
+  }).join("\n");
+
+  return "你是一个 Vue 3 + TypeScript 代码分析专家。分析以下源码，找出每个按钮最终调用的后端 API 接口。\n\n" +
+    "## 分析规则\n" +
+    "1. 找到每个 v-auth 指令对应的按钮元素\n" +
+    "2. 追踪 @click 事件处理函数 → 弹窗/对话框 → request()/axios 调用 → url + method\n" +
+    "3. 如果按钮只打开预览/详情弹窗且不涉及 API 调用，apis 返回空数组\n" +
+    "4. el-upload 追踪 :http-request 或 :on-change\n" +
+    "5. 条件表达式如 dataSource.id ? PUT : POST，根据上下文判断\n" +
+    "6. router.push / window.open → method: NAVIGATE, url: 目标路径\n\n" +
+    "## 模块: " + moduleName + "\n\n" +
+    "## 需要分析的按钮 (" + buttons.length + " 个):\n" + buttonsList + "\n\n" +
+    "## 源码:\n" + filesSection + "\n\n" +
+    "## 输出格式\n" +
+    "严格输出 JSON 数组，每个元素对应一个按钮：\n" +
+    "[\n" +
+    "  {\n" +
+    "    \"authId\": \"去掉引号的权限标识\",\n" +
+    "    \"label\": \"按钮显示文本\",\n" +
+    "    \"apis\": [{ \"method\": \"GET|POST|PUT|DELETE|NAVIGATE\", \"url\": \"/api/path\", \"apiFunction\": \"函数名\", \"note\": \"可选\" }],\n" +
+    "    \"confidence\": \"high|medium|low\",\n" +
+    "    \"reasoning\": \"简要追踪路径\"\n" +
+    "  }\n" +
+    "]";
+}
+
+async function prepareAITasks() {
+  const mappingFile = path.join(ROOT, CONFIG.outputDir, "auth-mapping.json");
+  if (!fs.existsSync(mappingFile)) {
+    console.error("❌ 未找到 dist/auth-mapping.json，请先运行静态分析");
+    process.exit(1);
+  }
+
+  const mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
+
+  // Group unmatched buttons by page/module
+  const groups = {};
+  let totalButtons = 0;
+  mapping.forEach(page => {
+    page.authBindings.forEach(binding => {
+      totalButtons++;
+      if (!binding.apis || binding.apis.length === 0) {
+        const key = page.page;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push({
+          page: page.page,
+          authValue: binding.authValue,
+          name: binding.name,
+          file: binding.file,
+          tag: binding.tag,
+        });
+      }
+    });
+  });
+
+  const unmatchedCount = Object.values(groups).reduce((sum, arr) => sum + arr.length, 0);
+  const moduleCount = Object.keys(groups).length;
+
+  console.log("📊 静态分析覆盖率: " + (totalButtons - unmatchedCount) + "/" + totalButtons + " (" + ((totalButtons - unmatchedCount) / totalButtons * 100).toFixed(1) + "%)");
+  console.log("🔍 需要 AI 补全: " + unmatchedCount + " 个按钮，分布在 " + moduleCount + " 个模块");
+  emit({ type: "ai-start", total: unmatchedCount, modules: moduleCount, coverage: ((totalButtons - unmatchedCount) / totalButtons * 100).toFixed(1) });
+
+  if (unmatchedCount === 0) {
+    console.log("✅ 所有按钮已关联 API，无需 AI 补全");
+    emit({ type: "done" });
+    return;
+  }
+
+  // Build tasks
+  const tasks = [];
+  const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
+  const resultsDir = path.join(OUTPUT_DIR, "ai-results");
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  // Check cache
+  const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
+  const cache = loadCache(cacheFile);
+
+  let cachedModules = 0;
+  let pendingModules = 0;
+
+  for (const [moduleName, buttons] of Object.entries(groups)) {
+    // Check if all buttons in this module are cached
+    const allCached = buttons.every(b => cache[b.page + "|" + b.authValue]);
+    if (allCached) {
+      cachedModules++;
+      emit({ type: "ai-progress", current: tasks.length + 1, total: moduleCount, page: moduleName, status: "cache-hit", buttons: buttons.length });
+      continue;
+    }
+
+    // Collect files for this module
+    const relevantFiles = await collectModuleFiles(buttons, ROOT);
+    const fileContents = [];
+    let totalSize = 0;
+    const MAX_SIZE = 120000; // Larger limit for batch
+
+    // Prioritize: button files first, then API files, then others
+    const buttonAbsPaths = buttons.map(b => path.join(ROOT, b.file));
+    const priorityFiles = relevantFiles.filter(f => buttonAbsPaths.includes(f) || f.includes("/api/"));
+    const otherFiles = relevantFiles.filter(f => !priorityFiles.includes(f));
+    const orderedFiles = [...priorityFiles, ...otherFiles];
+
+    for (const filePath of orderedFiles) {
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (totalSize + content.length > MAX_SIZE) continue;
+        fileContents.push({ filePath: path.relative(ROOT, filePath), content });
+        totalSize += content.length;
+      } catch { /* skip unreadable */ }
+    }
+
+    const prompt = buildBatchPrompt(moduleName, buttons, fileContents);
+    const safeName = moduleName.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_+|_+$/g, "") || "root";
+
+    tasks.push({
+      id: safeName,
+      module: moduleName,
+      buttons: buttons.map(b => ({ authValue: b.authValue, name: b.name, file: b.file, tag: b.tag })),
+      prompt,
+      outputFile: "dist/ai-results/" + safeName + ".json",
+    });
+
+    pendingModules++;
+    emit({ type: "ai-progress", current: tasks.length + cachedModules, total: moduleCount, page: moduleName, status: "pending", buttons: buttons.length });
+  }
+
+  // Write tasks file
+  const tasksFile = path.join(OUTPUT_DIR, "ai-tasks.json");
+  const tasksOutput = {
+    generatedAt: new Date().toISOString(),
+    totalButtons: unmatchedCount,
+    totalModules: moduleCount,
+    cachedModules,
+    pendingModules: tasks.length,
+    tasks,
+  };
+  fs.writeFileSync(tasksFile, JSON.stringify(tasksOutput, null, 2), "utf-8");
+
+  console.log("\n📋 AI 任务文件: " + path.relative(ROOT, tasksFile));
+  console.log("   待分析模块: " + tasks.length + " 个");
+  console.log("   缓存命中模块: " + cachedModules + " 个");
+  console.log("\n💡 请使用 agent 读取 " + tasksFile + " 并用 subagent 并发处理每个任务");
+  emit({ type: "tasks-ready", file: tasksFile, pending: tasks.length, cached: cachedModules });
+}
+
+// ─── 合并 AI 结果（subagent 写入的分散结果）────────────────
+function mergeAIResults() {
+  const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
+  const resultsDir = path.join(OUTPUT_DIR, "ai-results");
+  const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
+  const cache = loadCache(cacheFile);
+
+  if (!fs.existsSync(resultsDir)) {
+    console.error("❌ 未找到 dist/ai-results/ 目录");
+    process.exit(1);
+  }
+
+  const resultFiles = fs.readdirSync(resultsDir).filter(f => f.endsWith(".json"));
+  if (resultFiles.length === 0) {
+    console.error("❌ dist/ai-results/ 中没有结果文件");
+    process.exit(1);
+  }
+
+  const allResults = [];
+  let fileCount = 0;
+
+  for (const file of resultFiles) {
     try {
-      const body = {
-        model: config.model,
-        messages,
-        temperature: config.temperature,
-        max_tokens: 4096,
-        response_format: { type: "json_object" },
-      };
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + config.apiKey,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120000),
+      const data = JSON.parse(fs.readFileSync(path.join(resultsDir, file), "utf-8"));
+      const results = Array.isArray(data) ? data : (data.results || []);
+      results.forEach(r => {
+        allResults.push(r);
+        // Update cache
+        if (r.authId) {
+          const cacheKey = (r.page || "") + "|" + (r.authId.startsWith("'") || r.authId.startsWith('"') ? r.authId : "'" + r.authId + "'");
+          cache[cacheKey] = { apis: r.apis || [], confidence: r.confidence || "medium", reasoning: r.reasoning || "" };
+        }
       });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error("HTTP " + res.status + ": " + errText);
-      }
-
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content;
-
-      if (!content) {
-        throw new Error("Empty response content");
-      }
-
-      // 解析 JSON（处理可能的 markdown code block 包裹）
-      let jsonStr = content.trim();
-      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
-      const parsed = JSON.parse(jsonStr);
-
-      const tokens = data.usage?.total_tokens || "?";
-      console.log("  ✅ LLM 调用成功 (attempt " + (attempt + 1) + ", tokens: " + tokens + ")");
-      return parsed;
-
-    } catch (err) {
-      console.log("  ⚠️  Attempt " + (attempt + 1) + " 失败: " + err.message);
-      if (attempt < config.maxRetries - 1) {
-        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
-      } else {
-        throw err;
-      }
+      fileCount++;
+    } catch (e) {
+      console.log("⚠️  跳过无效结果文件: " + file + " (" + e.message + ")");
     }
   }
+
+  saveCache(cacheFile, cache);
+
+  const output = {
+    generatedAt: new Date().toISOString(),
+    model: "dsh-subagent",
+    stats: {
+      total: allResults.length,
+      cacheHits: 0,
+      llmCalls: fileCount,
+      highConfidence: allResults.filter(r => r.confidence === "high").length,
+      mediumConfidence: allResults.filter(r => r.confidence === "medium").length,
+      lowConfidence: allResults.filter(r => r.confidence === "low").length,
+      failed: allResults.filter(r => r.confidence === "failed").length,
+    },
+    results: allResults,
+  };
+
+  const aiOutputFile = path.join(OUTPUT_DIR, "auth-mapping-ai.json");
+  fs.writeFileSync(aiOutputFile, JSON.stringify(output, null, 2), "utf-8");
+
+  emit({ type: "ai-done", stats: output.stats });
+  console.log("📋 AI 结果合并完成");
+  console.log("   结果文件: " + fileCount + " 个");
+  console.log("   按钮总数: " + allResults.length);
+  console.log("   🟢 高: " + output.stats.highConfidence + " 🟡 中: " + output.stats.mediumConfidence + " 🔴 低: " + output.stats.lowConfidence + " ❌ 失败: " + output.stats.failed);
+  console.log("   输出: " + path.relative(ROOT, aiOutputFile));
 }
 
 // ─── 缓存管理 ────────────────────────────────────────────
@@ -2671,229 +2853,6 @@ function loadCache(cacheFile) {
 
 function saveCache(cacheFile, cache) {
   fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 2), "utf-8");
-}
-
-// ─── 收集未匹配按钮的相关文件 ────────────────────────────
-async function collectRelevantFiles(unmatchedButton, rootDir) {
-  const absFile = path.join(rootDir, unmatchedButton.file);
-  const pageDir = path.dirname(absFile);
-
-  const vueFiles = await fg("**/*.vue", { cwd: pageDir, absolute: true });
-  const apiFiles = await fg("**/api/index.ts", { cwd: pageDir, absolute: true });
-  const parentApi = await fg("api/index.ts", { cwd: path.dirname(pageDir), absolute: true });
-
-  return [...new Set([...vueFiles, ...apiFiles, ...parentApi])];
-}
-
-// ─── 构建 Prompt ────────────────────────────────────────
-function buildPrompt(button, fileContents) {
-  const filesSection = fileContents
-    .map(({ filePath, content }) => "### File: " + filePath + "\n```vue\n" + content + "\n```")
-    .join("\n\n");
-
-  const authClean = button.authValue.replace(/['"]/g, "");
-
-  return [
-    {
-      role: "system",
-      content: "你是一个 Vue 3 + TypeScript 代码分析专家。你的任务是分析 Vue 组件源码，找出指定按钮最终调用的后端 API 接口。\n\n" +
-        "分析规则：\n" +
-        "1. 找到 v-auth 指令值为目标权限标识的按钮元素\n" +
-        "2. 追踪该按钮的 @click 事件处理函数\n" +
-        "3. 如果处理函数打开了弹窗/对话框组件，继续追踪弹窗内的提交逻辑\n" +
-        "4. 最终找到调用 request() 或 axios 的地方，提取 url 和 method\n" +
-        "5. 如果按钮只是打开预览/详情弹窗且不涉及 API 调用，返回空 apis 数组\n" +
-        "6. 如果按钮通过 el-upload 触发，追踪 :http-request 或 :on-change 处理函数\n" +
-        "7. 注意条件表达式如 dataSource.id ? PUT : POST，根据上下文判断实际使用的 method\n" +
-        "8. 对于导航类按钮（router.push / window.open / router.replace），将导航目标作为 api 输出，method 设为 NAVIGATE，url 设为目标路径，在 note 中注明是页面跳转\n\n" +
-        "只输出 JSON，不要其他内容。"
-    },
-    {
-      role: "user",
-      content: "分析以下文件中 v-auth=\"" + authClean + "\" 的按钮（名称: \"" + button.name + "\", 标签: " + button.tag + "），找出它最终调用的 API 接口。\n\n" +
-        filesSection + "\n\n" +
-        "请严格输出如下 JSON 格式：\n" +
-        "{\n" +
-        "  \"authId\": \"去掉引号的权限标识字符串\",\n" +
-        "  \"label\": \"按钮显示文本\",\n" +
-        "  \"apis\": [\n" +
-        "    {\n" +
-        "      \"method\": \"GET 或 POST 或 PUT 或 DELETE 或 NAVIGATE\",\n" +
-        "      \"url\": \"/api/path/here\",\n" +
-        "      \"apiFunction\": \"api函数名\",\n" +
-        "      \"note\": \"可选补充说明\"\n" +
-        "    }\n" +
-        "  ],\n" +
-        "  \"confidence\": \"high 或 medium 或 low\",\n" +
-        "  \"reasoning\": \"简要说明追踪路径\"\n" +
-        "}"
-    }
-  ];
-}
-
-// ─── 主流程 ──────────────────────────────────────────────
-async function runAICompletion() {
-  const config = loadAIConfig();
-
-  if (!config.apiKey) {
-    console.error("❌ 未找到 API Key。请设置 AI_API_KEY 环境变量或在 ~/.dsh/.credentials.yaml 中配置");
-    process.exit(1);
-  }
-
-  console.log("🤖 AI 补全分析器");
-  console.log("   Model: " + config.model);
-  console.log("   Base URL: " + config.baseUrl);
-  console.log("");
-
-  // 1. 读取静态分析结果
-  if (!fs.existsSync(config.mappingFile)) {
-    console.error("❌ 未找到 dist/auth-mapping.json，请先运行 node scripts/analyze-auth.mjs");
-    process.exit(1);
-  }
-
-  const mapping = JSON.parse(fs.readFileSync(config.mappingFile, "utf-8"));
-
-  // 2. 提取未匹配 API 的按钮
-  const unmatched = [];
-  let totalButtons = 0;
-  mapping.forEach(page => {
-    page.authBindings.forEach(binding => {
-      totalButtons++;
-      if (!binding.apis || binding.apis.length === 0) {
-        unmatched.push({
-          page: page.page,
-          authValue: binding.authValue,
-          name: binding.name,
-          file: binding.file,
-          tag: binding.tag,
-        });
-      }
-    });
-  });
-
-  console.log("📊 静态分析覆盖率: " + (totalButtons - unmatched.length) + "/" + totalButtons + " (" + ((totalButtons - unmatched.length) / totalButtons * 100).toFixed(1) + "%)");
-  console.log("🔍 需要 AI 补全的按钮: " + unmatched.length + " 个\n");
-  emit({ type: "ai-start", total: unmatched.length, coverage: ((totalButtons - unmatched.length) / totalButtons * 100).toFixed(1) });
-
-  if (unmatched.length === 0) {
-    console.log("✅ 所有按钮已关联 API，无需 AI 补全");
-    return;
-  }
-
-  // 3. 加载缓存
-  const cache = loadCache(config.cacheFile);
-  const results = [];
-  let hitCount = 0;
-  let missCount = 0;
-
-  // 4. 逐个分析
-  for (let i = 0; i < unmatched.length; i++) {
-    const button = unmatched[i];
-    console.log("[" + (i + 1) + "/" + unmatched.length + "] 分析: " + button.page + " | " + button.authValue + " | " + button.name);
-    emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "analyzing" });
-
-    // 检查缓存
-    const cacheKey = button.page + "|" + button.authValue;
-    if (cache[cacheKey]) {
-      console.log("  💾 命中缓存");
-      emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "cache-hit" });
-      results.push({ ...button, ...cache[cacheKey], source: "cache" });
-      hitCount++;
-      continue;
-    }
-
-    // 收集相关文件
-    const relevantFiles = await collectRelevantFiles(button, ROOT);
-
-    // 读取文件内容（限制大小避免超 token）
-    const fileContents = [];
-    let totalSize = 0;
-    const MAX_SIZE = 80000;
-
-    const buttonAbsPath = path.join(ROOT, button.file);
-    const priorityFiles = relevantFiles.filter(f => f === buttonAbsPath || f.includes("/api/"));
-    const otherFiles = relevantFiles.filter(f => !priorityFiles.includes(f));
-    const orderedFiles = [...priorityFiles, ...otherFiles];
-
-    for (const filePath of orderedFiles) {
-      try {
-        const content = fs.readFileSync(filePath, "utf-8");
-        if (totalSize + content.length > MAX_SIZE) continue;
-        fileContents.push({ filePath: path.relative(ROOT, filePath), content });
-        totalSize += content.length;
-      } catch { /* skip unreadable */ }
-    }
-
-    try {
-      const messages = buildPrompt(button, fileContents);
-      const result = await callLLM(config, messages);
-
-      results.push({ ...button, ...result, source: "llm" });
-      cache[cacheKey] = result;
-      missCount++;
-      emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "done", confidence: result.confidence });
-
-    } catch (err) {
-      console.log("  ❌ 分析失败: " + err.message);
-      results.push({
-        ...button,
-        apis: [],
-        confidence: "failed",
-        reasoning: err.message,
-        source: "error"
-      });
-      emit({ type: "ai-progress", current: i + 1, total: unmatched.length, page: button.page, auth: button.authValue, name: button.name, status: "failed", error: err.message });
-    }
-
-    // 请求间隔，避免限流
-    if (i < unmatched.length - 1) {
-      await new Promise(r => setTimeout(r, 1500));
-    }
-  }
-
-  // 5. 保存结果
-  saveCache(config.cacheFile, cache);
-
-  const output = {
-    generatedAt: new Date().toISOString(),
-    model: config.model,
-    stats: {
-      total: unmatched.length,
-      cacheHits: hitCount,
-      llmCalls: missCount,
-      highConfidence: results.filter(r => r.confidence === "high").length,
-      mediumConfidence: results.filter(r => r.confidence === "medium").length,
-      lowConfidence: results.filter(r => r.confidence === "low").length,
-      failed: results.filter(r => r.confidence === "failed").length,
-    },
-    results,
-  };
-
-  fs.mkdirSync(path.dirname(config.outputFile), { recursive: true });
-  fs.writeFileSync(config.outputFile, JSON.stringify(output, null, 2), "utf-8");
-
-  // 6. 打印摘要
-  emit({ type: "ai-done", stats: output.stats });
-  console.log("\n" + "=".repeat(60));
-  console.log("📋 AI 补全分析完成");
-  console.log("=".repeat(60));
-  console.log("  总计: " + output.stats.total + " 个按钮");
-  console.log("  缓存命中: " + output.stats.cacheHits);
-  console.log("  LLM 调用: " + output.stats.llmCalls);
-  console.log("  🟢 高置信度: " + output.stats.highConfidence);
-  console.log("  🟡 中置信度: " + output.stats.mediumConfidence);
-  console.log("  🔴 低置信度: " + output.stats.lowConfidence);
-  console.log("  ❌ 失败: " + output.stats.failed);
-  console.log("\n  输出: " + path.relative(ROOT, config.outputFile));
-  console.log("  缓存: " + path.relative(ROOT, config.cacheFile));
-
-  console.log("\n📝 详细结果:");
-  results.forEach(r => {
-    const icon = r.confidence === "high" ? "🟢" : r.confidence === "medium" ? "🟡" : r.confidence === "low" ? "🔴" : "❌";
-    const apis = r.apis && r.apis.length > 0 ? r.apis.map(a => a.method + " " + a.url).join(", ") : "(无API)";
-    console.log("  " + icon + " " + r.authValue + " → " + apis);
-    if (r.reasoning) console.log("     └─ " + r.reasoning);
-  });
 }
 
 // ============================================================
@@ -3004,20 +2963,38 @@ async function main() {
     }
   }
 
-  if (!opts.staticOnly && CONFIG.ai.enabled) {
-    emit({ type: "phase", phase: "ai", label: "AI Completion" });
+  if (opts.mergeAi) {
+    emit({ type: "phase", phase: "merge-ai", label: "Merge AI Results" });
     console.log("\n" + "=".repeat(60));
-    console.log("PHASE 2: AI Completion");
+    console.log("PHASE 2: Merge AI Results");
+    console.log("=".repeat(60));
+    mergeAIResults();
+    if (fs.existsSync(AI_OUTPUT)) {
+      aiData = JSON.parse(fs.readFileSync(AI_OUTPUT, "utf-8"));
+    }
+  } else if (opts.prepareAi) {
+    emit({ type: "phase", phase: "prepare-ai", label: "Prepare AI Tasks" });
+    console.log("\n" + "=".repeat(60));
+    console.log("PHASE 2: Prepare AI Tasks");
     console.log("=".repeat(60));
     if (opts.noCache) {
       const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
       if (fs.existsSync(cacheFile)) fs.unlinkSync(cacheFile);
       console.log("AI cache cleared.");
     }
-    await runAICompletion();
-    if (fs.existsSync(AI_OUTPUT)) {
-      aiData = JSON.parse(fs.readFileSync(AI_OUTPUT, "utf-8"));
+    await prepareAITasks();
+  } else if (!opts.staticOnly && CONFIG.ai.enabled) {
+    // Default: prepare tasks (no longer self-call LLM)
+    emit({ type: "phase", phase: "prepare-ai", label: "Prepare AI Tasks" });
+    console.log("\n" + "=".repeat(60));
+    console.log("PHASE 2: Prepare AI Tasks");
+    console.log("=".repeat(60));
+    if (opts.noCache) {
+      const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
+      if (fs.existsSync(cacheFile)) fs.unlinkSync(cacheFile);
+      console.log("AI cache cleared.");
     }
+    await prepareAITasks();
   }
 
   if (staticData) {

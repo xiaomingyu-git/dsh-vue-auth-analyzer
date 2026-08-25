@@ -227,6 +227,52 @@ export function apply(ctx) {
       },
     })
 
+    // POST /dsh-vue-auth-analyzer/merge — merge AI results from subagents
+    host.register({
+      kind: 'exact',
+      path: '/dsh-vue-auth-analyzer/merge',
+      handler: async (request, response) => {
+        if (request.method !== 'POST') {
+          response.writeHead(405, { allow: 'POST' })
+          response.end()
+          return
+        }
+
+        let body = ''
+        for await (const chunk of request) body += chunk
+        let opts = {}
+        try { opts = JSON.parse(body || '{}') } catch {}
+
+        const cwd = opts.cwd || process.cwd()
+        const args = ['--merge-ai', '--ndjson']
+
+        response.writeHead(200, {
+          'content-type': 'application/x-ndjson; charset=utf-8',
+          'cache-control': 'no-store',
+        })
+
+        const child = spawn(process.execPath, [scriptPath, ...args], {
+          cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env },
+        })
+
+        child.stdout.on('data', (chunk) => { response.write(chunk) })
+        child.stderr.on('data', (chunk) => {
+          const lines = chunk.toString().split('\n').filter(l => l.trim())
+          for (const line of lines) {
+            response.write(JSON.stringify({ type: 'stderr', message: line }) + '\n')
+          }
+        })
+        child.on('close', (code) => {
+          response.write(JSON.stringify({ type: 'exit', code }) + '\n')
+          response.end()
+        })
+        child.on('error', (err) => {
+          response.write(JSON.stringify({ type: 'error', message: err.message }) + '\n')
+          response.end()
+        })
+      },
+    })
+
     // GET /dsh-vue-auth-analyzer/status — check if running
     host.register({
       kind: 'exact',
