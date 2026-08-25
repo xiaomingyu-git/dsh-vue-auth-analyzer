@@ -56,6 +56,8 @@ window.__ModuleLoader__.load({
       ".ava-summary-item{display:inline-flex;align-items:center;gap:4px}",
       ".ava-spin{display:inline-block;width:14px;height:14px;border:2px solid var(--dsw-alias-border-l2,#e5e7eb);border-top-color:var(--dsw-alias-brand-primary,#4f6ef7);border-radius:50%;animation:ava-spin .6s linear infinite}",
       "@keyframes ava-spin{to{transform:rotate(360deg)}}",
+      ".ava-hint-banner{padding:10px 14px;font-size:12px;line-height:18px;background:var(--dsw-alias-bg-layer-2,#fffbe6);border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);color:var(--dsw-alias-label-primary,#1f2328);display:flex;align-items:center;gap:8px}",
+      ".ava-hint-icon{font-size:16px;flex-shrink:0}",
     ].join("\n");
 
     const tagId = "dsh-vue-auth-analyzer/card.css";
@@ -79,7 +81,8 @@ window.__ModuleLoader__.load({
 
       save: "保存", saved: "✓ 已保存", saving: "保存中…",
       on: "开", off: "关",
-      runFull: "静态分析 + 准备AI任务", runStatic: "仅静态分析", cancel: "取消", retry: "重试",
+      runFull: "全量分析", runStatic: "静态分析", cancel: "取消", retry: "重试",
+      tasksReady: "AI 任务已准备好", tasksReadyHint: "请在对话中说「继续分析」让 Agent 并发处理 AI 任务",
       running: "分析中…", idle: "就绪", cancelled: "已取消",
       phaseStatic: "静态分析", phaseAI: "准备 AI 任务", phaseMerge: "合并结果", phasePrepareAi: "准备 AI 任务",
       cacheHit: "缓存命中", analyzing: "分析中", done: "完成", failed: "失败",
@@ -98,7 +101,8 @@ window.__ModuleLoader__.load({
 
       save: "Save", saved: "✓ Saved", saving: "Saving…",
       on: "On", off: "Off",
-      runFull: "Static + Prepare AI Tasks", runStatic: "Static Only", cancel: "Cancel", retry: "Retry",
+      runFull: "Full Analysis", runStatic: "Static Analysis", cancel: "Cancel", retry: "Retry",
+      tasksReady: "AI Tasks Ready", tasksReadyHint: "Say continue analysis in chat to let Agent process AI tasks concurrently",
       running: "Running…", idle: "Ready", cancelled: "Cancelled",
       phaseStatic: "Static Analysis", phaseAI: "Prepare AI Tasks", phaseMerge: "Merge Results", phasePrepareAi: "Prepare AI Tasks",
       cacheHit: "Cache hit", analyzing: "Analyzing", done: "Done", failed: "Failed",
@@ -210,6 +214,7 @@ window.__ModuleLoader__.load({
                   if (evt.type === "ai-start") { next.total = evt.total; next.current = 0; }
                   if (evt.type === "ai-progress") { next.current = evt.current; next.total = evt.total; }
                   if (evt.type === "ai-done") next.stats = evt.stats;
+                  if (evt.type === "tasks-ready") { next.tasksReady = evt; }
                   if (evt.type === "done") next.status = "done";
                   if (evt.type === "cancelled") next.status = "cancelled";
                   if (evt.type === "exit") {
@@ -306,7 +311,15 @@ window.__ModuleLoader__.load({
               return null;
             }),
             h("div", { ref: logEndRef })
-          )
+          ),
+          runState.tasksReady && runState.tasksReady.pending > 0
+            ? h("div", { className: "ava-hint-banner" },
+                h("span", { className: "ava-hint-icon" }, "🤖"),
+                h("span", null,
+                  h("strong", null, t("tasksReady") + " "),
+                  "(" + runState.tasksReady.pending + " modules) — ",
+                  t("tasksReadyHint")))
+            : null
         );
       };
 
@@ -331,10 +344,10 @@ window.__ModuleLoader__.load({
 
         sectionTitle(t("sectionRun")),
         h("div", { className: "ava-row", style: { gap: "8px" } },
-          h(Button, { variant: "primary", size: "sm", disabled: isRunning, onClick: function() { startRun(false); } },
-            isRunning ? t("running") : t("runFull")),
           h(Button, { variant: "outline", size: "sm", disabled: isRunning, onClick: function() { startRun(true); } },
             t("runStatic")),
+          h(Button, { variant: "primary", size: "sm", disabled: isRunning, onClick: function() { startRun(false); } },
+            isRunning ? t("running") : t("runFull")),
           runState && runState.status !== "running" && runState.status !== "idle" && runState.status !== null
             ? h(Button, { variant: "outline", size: "sm", onClick: function() { startRun(false); } }, t("retry"))
             : null
