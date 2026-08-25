@@ -1,6 +1,6 @@
 ---
 name: dsh-vue-auth-analyzer
-description: Use when the user asks to analyze button permissions, scan page APIs, map v-auth directives to backend endpoints, audit permission-API coverage, or generate permission documentation for a Vue 3 project. Triggers on keywords like 按钮权限、权限扫描、API映射、v-auth分析、权限审计、button permission, API mapping, auth scan.
+description: ⚠️ MUST run script pipeline (node scripts/vue-auth-api-analyzer.mjs), do NOT manually analyze source. For 按钮权限、权限扫描、API映射、v-auth分析、权限审计、button permission、API mapping、auth scan.
 ---
 
 # Vue Auth-API Analyzer
