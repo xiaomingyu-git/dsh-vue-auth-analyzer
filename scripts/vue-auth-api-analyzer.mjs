@@ -2606,30 +2606,22 @@ async function collectModuleFiles(buttons, rootDir) {
   return [...allFiles];
 }
 
-function buildBatchPrompt(moduleName, buttons, fileContents, staticContext) {
+function buildBatchPrompt(moduleName, buttons, fileContents) {
   const filesSection = fileContents
     .map(({ filePath, content }) => "### File: " + filePath + "\n```\n" + content + "\n```")
     .join("\n\n");
 
   const buttonsList = buttons.map((b, i) => {
     const authClean = (b.authValue || "").replace(/['"]/g, "");
-    return (i + 1) + ". v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | 标签: " + (b.tag || "") + " | 文件: " + b.file;
-  }).join("\n");
-
-  // Build static context section: show what static analysis already resolved in this module
-  let staticSection = "";
-  if (staticContext && staticContext.length > 0) {
-    staticSection = "## 同模块已解析的按钮（静态分析结果，供参考）\n" +
-      "以下是同一模块中静态分析已成功关联 API 的按钮，可作为分析模式参考：\n\n";
-    for (const sc of staticContext.slice(0, 15)) { // Limit to avoid prompt bloat
-      const apis = (sc.apis || []).map(a => a.method + " " + a.url).join(", ");
-      const trace = sc.trace && sc.trace[0] && sc.trace[0].chain ? sc.trace[0].chain.join(" → ") : "";
-      staticSection += "- **" + (sc.name || "") + "** (" + (sc.authValue || "").replace(/['"]/g, "") + ")\n";
-      staticSection += "  API: " + apis + "\n";
-      if (trace) staticSection += "  调用链: " + trace + "\n";
+    if (b.matched) {
+      // Already resolved by static analysis — show as confirmed reference
+      const apis = (b.apis || []).map(a => a.method + " " + a.url).join(", ");
+      return (i + 1) + ". ✅ [已确认] v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | API: " + apis;
+    } else {
+      // Needs AI analysis
+      return (i + 1) + ". ❓ [待分析] v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | 标签: " + (b.tag || "") + " | 文件: " + b.file;
     }
-    staticSection += "\n";
-  }
+  }).join("\n");
 
   return "你是一个 Vue 3 + TypeScript 代码分析专家。分析以下源码，找出每个按钮最终触发的后端 API 接口。\n\n" +
     "## 分析规则\n" +
@@ -2646,8 +2638,11 @@ function buildBatchPrompt(moduleName, buttons, fileContents, staticContext) {
     "5. 条件表达式如 dataSource.id ? PUT : POST，根据上下文判断\n" +
     "6. router.push / window.open → method: NAVIGATE, url: 目标路径\n\n" +
     "## 模块: " + moduleName + "\n\n" +
-    staticSection +
-    "## 需要分析的按钮 (" + buttons.length + " 个):\n" + buttonsList + "\n\n" +
+    "## 模块按钮清单 (" + buttons.length + " 个):\n" +
+    "✅ [已确认] = 静态分析已确认的 API 映射，不需要重新分析，但可作为你分析其他按钮的参考模式\n" +
+    "❓ [待分析] = 需要你分析的按钮\n\n" +
+    buttonsList + "\n\n" +
+    "**重要**：只为 ❓ [待分析] 的按钮输出结果。✅ [已确认] 的按钮仅作为参考，不要输出它们的结果。\n\n" +
     "## 源码:\n" + filesSection + "\n\n" +
     "## 输出格式\n" +
     "严格输出 JSON 数组，每个元素对应一个按钮：\n" +
@@ -2690,31 +2685,44 @@ async function prepareAITasks() {
     mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
   }
 
-  // Group unmatched buttons by page/module
-  const groups = {};
+  // Group ALL buttons by page/module (Plan A: give AI full module context)
+  const groups = {};       // all buttons per module
+  const unmatchedSet = new Set(); // track which need AI analysis
   let totalButtons = 0;
+  let unmatchedCount = 0;
   mapping.forEach(page => {
     page.authBindings.forEach(binding => {
       totalButtons++;
-      if (!binding.apis || binding.apis.length === 0) {
-        const key = page.page;
-        if (!groups[key]) groups[key] = [];
-        groups[key].push({
-          page: page.page,
-          authValue: binding.authValue,
-          name: binding.name,
-          file: binding.file,
-          tag: binding.tag,
-        });
+      const key = page.page;
+      if (!groups[key]) groups[key] = [];
+      const isUnmatched = !binding.apis || binding.apis.length === 0;
+      groups[key].push({
+        page: page.page,
+        authValue: binding.authValue,
+        name: binding.name,
+        file: binding.file,
+        tag: binding.tag,
+        matched: !isUnmatched,
+        apis: binding.apis || [],
+        trace: binding.trace || [],
+      });
+      if (isUnmatched) {
+        unmatchedCount++;
+        unmatchedSet.add(page.page + "|" + binding.authValue);
       }
     });
   });
 
-  const unmatchedCount = Object.values(groups).reduce((sum, arr) => sum + arr.length, 0);
+  // Only keep modules that have at least one unmatched button
+  for (const key of Object.keys(groups)) {
+    const hasUnmatched = groups[key].some(b => !b.matched);
+    if (!hasUnmatched) delete groups[key];
+  }
+
   const moduleCount = Object.keys(groups).length;
 
   console.log("📊 静态分析覆盖率: " + (totalButtons - unmatchedCount) + "/" + totalButtons + " (" + ((totalButtons - unmatchedCount) / totalButtons * 100).toFixed(1) + "%)");
-  console.log("🔍 需要 AI 补全: " + unmatchedCount + " 个按钮，分布在 " + moduleCount + " 个模块");
+  console.log("🔍 需要 AI 补全: " + unmatchedCount + " 个按钮，分布在 " + moduleCount + " 个模块（含已确认按钮作为上下文）");
   emit({ type: "ai-start", total: unmatchedCount, modules: moduleCount, coverage: ((totalButtons - unmatchedCount) / totalButtons * 100).toFixed(1) });
 
   if (unmatchedCount === 0) {
@@ -2765,13 +2773,8 @@ async function prepareAITasks() {
       } catch { /* skip unreadable */ }
     }
 
-    // Extract matched buttons from same module as AI context
-    const pageData = mapping.find(p => p.page === moduleName);
-    const staticContext = pageData
-      ? (pageData.authBindings || []).filter(b => b.apis && b.apis.length > 0)
-      : [];
-
-    const prompt = buildBatchPrompt(moduleName, buttons, fileContents, staticContext);
+    // All buttons (matched + unmatched) are already in the buttons array
+    const prompt = buildBatchPrompt(moduleName, buttons, fileContents);
     const safeName = moduleName.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_+|_+$/g, "") || "root";
 
     tasks.push({
