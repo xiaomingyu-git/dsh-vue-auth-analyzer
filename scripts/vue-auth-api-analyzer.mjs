@@ -2761,10 +2761,6 @@ async function prepareAITasks() {
   };
   fs.writeFileSync(indexFile, JSON.stringify(indexOutput, null, 2), "utf-8");
 
-  // Also write legacy ai-tasks.json for backward compatibility (without prompts)
-  const legacyFile = path.join(OUTPUT_DIR, "ai-tasks.json");
-  fs.writeFileSync(legacyFile, JSON.stringify(indexOutput, null, 2), "utf-8");
-
   console.log("\n📋 AI 任务目录: " + path.relative(ROOT, tasksDir));
   console.log("   索引文件: " + path.relative(ROOT, indexFile));
   console.log("   待分析模块: " + tasks.length + " 个（每模块一个文件）");
@@ -2785,39 +2781,24 @@ function mergeAIResults() {
   const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
   const resultsDir = path.join(OUTPUT_DIR, "ai-results");
   const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
-  const tasksFile = path.join(OUTPUT_DIR, "ai-tasks.json");
   const cache = loadCache(cacheFile);
 
-  // Build authId → {page, authValue} mapping.
-  // Prefer ai-tasks.json (from --prepare-ai); fall back to auth-mapping.json (static output).
+  // Build authId → {page, authValue} mapping from static analysis output.
+  // This is the single source of truth for button→page membership.
   const authIdToOriginal = new Map();
-  if (fs.existsSync(tasksFile)) {
+  const mappingFile = path.join(OUTPUT_DIR, "auth-mapping.json");
+  if (fs.existsSync(mappingFile)) {
     try {
-      const tasksData = JSON.parse(fs.readFileSync(tasksFile, "utf-8"));
-      (tasksData.tasks || []).forEach(task => {
-        (task.buttons || []).forEach(b => {
+      const mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
+      (Array.isArray(mapping) ? mapping : []).forEach(page => {
+        (page.authBindings || []).forEach(b => {
           const cleanId = (b.authValue || "").replace(/['"]/g, "");
-          authIdToOriginal.set(cleanId, { page: task.module, authValue: b.authValue });
+          if (cleanId && !authIdToOriginal.has(cleanId)) {
+            authIdToOriginal.set(cleanId, { page: page.page, authValue: b.authValue });
+          }
         });
       });
     } catch {}
-  }
-  // Fallback: read static analysis output to build the mapping
-  if (authIdToOriginal.size === 0) {
-    const mappingFile = path.join(OUTPUT_DIR, "auth-mapping.json");
-    if (fs.existsSync(mappingFile)) {
-      try {
-        const mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
-        (Array.isArray(mapping) ? mapping : []).forEach(page => {
-          (page.authBindings || []).forEach(b => {
-            const cleanId = (b.authValue || "").replace(/['"]/g, "");
-            if (cleanId && !authIdToOriginal.has(cleanId)) {
-              authIdToOriginal.set(cleanId, { page: page.page, authValue: b.authValue });
-            }
-          });
-        });
-      } catch {}
-    }
   }
 
   if (!fs.existsSync(resultsDir)) {
