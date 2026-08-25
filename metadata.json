@@ -17,6 +17,10 @@
       "desc": "Merge AI results from ai-results/*.json"
     },
     {
+      "flag": "--run-ai",
+      "desc": "Run AI analysis directly (no subagent needed)"
+    },
+    {
       "flag": "--no-cache",
       "desc": "Clear AI cache before preparing tasks"
     },
@@ -44,9 +48,9 @@
     },
     {
       "step": 3,
-      "cmd": "(subagents write)",
+      "cmd": "--run-ai OR subagents",
       "output": ".auth-analyzer/ai-results/<module>.json",
-      "desc": "DSH subagent concurrent analysis"
+      "desc": "AI analysis (script or subagent)"
     },
     {
       "step": 4,
@@ -138,6 +142,42 @@
       "zhHint": "对静态分析未覆盖的按钮调用 LLM 补全映射",
       "enLabel": "AI Completion",
       "enHint": "Use LLM to complete mappings for unmatched buttons"
+    },
+    {
+      "key": "aiApiKey",
+      "type": "string",
+      "default": "",
+      "zhLabel": "API Key",
+      "zhHint": "LLM API Key，留空自动从 ~/.dsh/.credentials.yaml 或环境变量读取",
+      "enLabel": "API Key",
+      "enHint": "LLM API key; auto-detected from ~/.dsh/.credentials.yaml or env vars if empty"
+    },
+    {
+      "key": "aiBaseUrl",
+      "type": "string",
+      "default": "https://api.deepseek.com/v1",
+      "zhLabel": "API 地址",
+      "zhHint": "OpenAI 兼容 API 的 Base URL",
+      "enLabel": "API Base URL",
+      "enHint": "OpenAI-compatible API base URL"
+    },
+    {
+      "key": "aiModel",
+      "type": "string",
+      "default": "deepseek-chat",
+      "zhLabel": "模型",
+      "zhHint": "LLM 模型名称",
+      "enLabel": "Model",
+      "enHint": "LLM model name"
+    },
+    {
+      "key": "aiConcurrency",
+      "type": "number",
+      "default": 2,
+      "zhLabel": "并发数",
+      "zhHint": "--run-ai 模式下同时调用的 LLM 请求数（1-5）",
+      "enLabel": "Concurrency",
+      "enHint": "Max concurrent LLM calls in --run-ai mode (1-5)"
     }
   ]
 }

@@ -57,6 +57,14 @@ function syncConfigToFile(settings) {
       const pattern = c.key === 'aiEnabled' ? /ai\.enabled:\s*(?:true|false)/ : new RegExp(c.key + ':\\s*(?:true|false)')
       const target = c.key === 'aiEnabled' ? 'ai.enabled' : c.key
       code = code.replace(pattern, `${target}: ${val}`)
+    } else if (c.key.startsWith('ai') && c.key !== 'aiEnabled') {
+      // Map aiApiKey → ai.apiKey, aiBaseUrl → ai.baseUrl, etc.
+      const configKey = 'ai.' + c.key.charAt(2).toLowerCase() + c.key.slice(3)
+      if (c.type === 'number') {
+        code = code.replace(new RegExp(configKey.replace('.', '\\.') + ':\\s*\\d+'), `${configKey}: ${val}`)
+      } else {
+        code = code.replace(new RegExp(configKey.replace('.', '\\.') + ':\\s*"[^"]*"' ), `${configKey}: "${val}"`)
+      }
     } else {
       code = code.replace(new RegExp(c.key + ':\\s*"[^"]*"' ), `${c.key}: "${val}"`)
     }

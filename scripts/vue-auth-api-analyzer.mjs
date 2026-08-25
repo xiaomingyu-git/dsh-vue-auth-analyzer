@@ -46,6 +46,10 @@ const CONFIG = {
   ai: {
     enabled: true,
     maxFileSize: 120000,  // Max total file content size per module batch (bytes)
+    apiKey: "",           // Or set env AI_API_KEY, or ~/.dsh/.credentials.yaml
+    baseUrl: "",          // Or set env AI_BASE_URL (auto-detected from credentials)
+    model: "",            // Or set env AI_MODEL (auto-detected from credentials)
+    concurrency: 2,       // Max concurrent LLM calls for --run-ai (1-5)
   },
 };
 
@@ -64,13 +68,14 @@ function emit(event) {
 // ============================================================
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { staticOnly: false, noCache: false, help: false, ndjson: false, prepareAi: false, mergeAi: false };
+  const opts = { staticOnly: false, noCache: false, help: false, ndjson: false, prepareAi: false, mergeAi: false, runAi: false };
   for (const a of args) {
     if (a === "--static-only") opts.staticOnly = true;
     else if (a === "--no-cache") opts.noCache = true;
     else if (a === "--ndjson") opts.ndjson = true;
     else if (a === "--prepare-ai") opts.prepareAi = true;
     else if (a === "--merge-ai") opts.mergeAi = true;
+    else if (a === "--run-ai") opts.runAi = true;
     else if (a === "--help" || a === "-h") opts.help = true;
   }
   return opts;
@@ -2827,6 +2832,171 @@ async function prepareAITasks() {
   emit({ type: "tasks-ready", indexFile, pending: tasks.length, cached: cachedModules, batchSize: BATCH_SIZE, totalBatches: batches.length, batches });
 }
 
+// ─── LLM 调用（--run-ai 模式）────────────────────────────
+
+function loadAICredentials() {
+  // Priority: CONFIG > env vars > ~/.dsh/.credentials.yaml
+  let apiKey = CONFIG.ai.apiKey || process.env.AI_API_KEY || "";
+  let baseUrl = CONFIG.ai.baseUrl || process.env.AI_BASE_URL || "https://api.deepseek.com/v1";
+  let model = CONFIG.ai.model || process.env.AI_MODEL || "deepseek-chat";
+
+  if (!apiKey) {
+    const credPath = path.join(process.env.HOME || "", ".dsh", ".credentials.yaml");
+    if (fs.existsSync(credPath)) {
+      try {
+        const content = fs.readFileSync(credPath, "utf-8");
+        const deepseekMatch = content.match(/DEEPSEEK_API_KEY:\s*(.+)/);
+        if (deepseekMatch) apiKey = deepseekMatch[1].trim();
+        if (!apiKey) {
+          const qwenMatch = content.match(/QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/);
+          if (qwenMatch) {
+            apiKey = qwenMatch[1].trim();
+            baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+            model = "qwen-plus";
+          }
+        }
+      } catch {}
+    }
+  }
+  return { apiKey, baseUrl, model };
+}
+
+async function callLLM(config, messages, maxRetries = 3) {
+  const url = config.baseUrl.replace(/\/+$/, "") + "/chat/completions";
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + config.apiKey,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages,
+          temperature: 0.1,
+          max_tokens: 4096,
+          response_format: { type: "json_object" },
+        }),
+        signal: AbortSignal.timeout(120000),
+      });
+      if (res.status === 429) {
+        const wait = 5000 * (attempt + 1);
+        console.log("  ⏳ 429 rate limited, waiting " + (wait / 1000) + "s...");
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error("HTTP " + res.status + ": " + errText.substring(0, 200));
+      }
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error("Empty response content");
+      let jsonStr = content.trim();
+      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+      return JSON.parse(jsonStr);
+    } catch (err) {
+      if (attempt < maxRetries - 1 && !err.message.includes("429")) {
+        console.log("  ⚠️ Attempt " + (attempt + 1) + " failed: " + err.message);
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+async function runAICompletion() {
+  const creds = loadAICredentials();
+  if (!creds.apiKey) {
+    console.error("❌ No API key found. Set AI_API_KEY env var, add to ~/.dsh/.credentials.yaml, or configure in GUI.");
+    process.exit(1);
+  }
+
+  const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
+  const tasksIndexFile = path.join(OUTPUT_DIR, "ai-tasks", "index.json");
+  if (!fs.existsSync(tasksIndexFile)) {
+    console.error("❌ No ai-tasks/index.json found. Run --prepare-ai first.");
+    process.exit(1);
+  }
+
+  const tasksIndex = JSON.parse(fs.readFileSync(tasksIndexFile, "utf-8"));
+  const resultsDir = path.join(OUTPUT_DIR, "ai-results");
+  fs.mkdirSync(resultsDir, { recursive: true });
+
+  const concurrency = Math.min(Math.max(CONFIG.ai.concurrency || 2, 1), 5);
+  const totalTasks = tasksIndex.tasks.length;
+
+  console.log("🤖 Running AI analysis directly");
+  console.log("   Model: " + creds.model);
+  console.log("   Base URL: " + creds.baseUrl);
+  console.log("   Tasks: " + totalTasks + ", Concurrency: " + concurrency);
+  emit({ type: "ai-start", total: totalTasks, modules: totalTasks, coverage: "N/A" });
+
+  let completed = 0;
+  let failed = 0;
+
+  // Process tasks with concurrency limit
+  async function processTask(task) {
+    const taskFilePath = path.join(ROOT, task.taskFile);
+    if (!fs.existsSync(taskFilePath)) {
+      console.log("⚠️ Task file not found: " + task.taskFile);
+      return null;
+    }
+
+    // Check if result already exists
+    const outputFile = path.join(ROOT, task.outputFile);
+    if (fs.existsSync(outputFile)) {
+      completed++;
+      emit({ type: "ai-progress", current: completed, total: totalTasks, page: task.module, status: "cache-hit", buttons: task.buttons });
+      console.log("[" + completed + "/" + totalTasks + "] ⏭ " + task.module + " (already done)");
+      return;
+    }
+
+    const taskData = JSON.parse(fs.readFileSync(taskFilePath, "utf-8"));
+    const prompt = taskData.prompt;
+
+    console.log("[" + (completed + 1) + "/" + totalTasks + "] 🔄 " + task.module + " (" + task.buttons + " buttons)");
+    emit({ type: "ai-progress", current: completed + 1, total: totalTasks, page: task.module, status: "analyzing", buttons: task.buttons });
+
+    try {
+      const messages = [
+        { role: "system", content: "You are a Vue 3 + TypeScript code analysis expert. Analyze source code to find the backend API endpoints that buttons ultimately trigger." },
+        { role: "user", content: prompt + "\n\nOutput strictly as JSON: { \"results\": [...], \"module\": \"" + task.module + "\" }" },
+      ];
+
+      const result = await callLLM(creds, messages);
+      fs.writeFileSync(outputFile, JSON.stringify(result, null, 2), "utf-8");
+      completed++;
+      emit({ type: "ai-progress", current: completed, total: totalTasks, page: task.module, status: "done" });
+      console.log("[" + completed + "/" + totalTasks + "] ✅ " + task.module);
+    } catch (err) {
+      failed++;
+      completed++;
+      console.log("[" + completed + "/" + totalTasks + "] ❌ " + task.module + ": " + err.message);
+      emit({ type: "ai-progress", current: completed, total: totalTasks, page: task.module, status: "failed", error: err.message });
+    }
+  }
+
+  // Execute with concurrency pool
+  const queue = [...tasksIndex.tasks];
+  const workers = [];
+  for (let i = 0; i < Math.min(concurrency, queue.length); i++) {
+    workers.push((async () => {
+      while (queue.length > 0) {
+        const task = queue.shift();
+        await processTask(task);
+      }
+    })());
+  }
+  await Promise.all(workers);
+
+  emit({ type: "ai-done", stats: { total: totalTasks, cacheHits: 0, llmCalls: totalTasks - failed, highConfidence: 0, mediumConfidence: 0, lowConfidence: 0, failed } });
+  console.log("\n📋 AI analysis complete: " + (totalTasks - failed) + "/" + totalTasks + " succeeded, " + failed + " failed");
+}
+
 // ─── 合并 AI 结果（subagent 写入的分散结果）────────────────
 function mergeAIResults() {
   const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
@@ -3065,8 +3235,35 @@ async function main() {
     }
   }
 
-  // Phase 2: AI task preparation or result merging
-  if (opts.mergeAi) {
+  // Phase 2: AI task preparation, direct AI execution, or result merging
+  if (opts.runAi) {
+    // --run-ai: prepare tasks + run LLM directly + merge (all-in-one)
+    emit({ type: "phase", phase: "prepare-ai", label: "Prepare AI Tasks" });
+    console.log("\n" + "=".repeat(60));
+    console.log("PHASE 2a: Prepare AI Tasks");
+    console.log("=".repeat(60));
+    if (opts.noCache) {
+      const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
+      if (fs.existsSync(cacheFile)) fs.unlinkSync(cacheFile);
+      console.log("AI cache cleared.");
+    }
+    await prepareAITasks();
+
+    emit({ type: "phase", phase: "run-ai", label: "Run AI Analysis" });
+    console.log("\n" + "=".repeat(60));
+    console.log("PHASE 2b: Run AI Analysis (direct LLM)");
+    console.log("=".repeat(60));
+    await runAICompletion();
+
+    emit({ type: "phase", phase: "merge-ai", label: "Merge AI Results" });
+    console.log("\n" + "=".repeat(60));
+    console.log("PHASE 2c: Merge Results");
+    console.log("=".repeat(60));
+    mergeAIResults();
+    if (fs.existsSync(AI_OUTPUT)) {
+      aiData = JSON.parse(fs.readFileSync(AI_OUTPUT, "utf-8"));
+    }
+  } else if (opts.mergeAi) {
     emit({ type: "phase", phase: "merge-ai", label: "Merge AI Results" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 2: Merge AI Results");

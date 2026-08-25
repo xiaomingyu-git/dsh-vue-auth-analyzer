@@ -42,6 +42,16 @@ dsh-vue-auth-analyzer 是一个 DeepSeek Harness (DSH) 插件，扫描 Vue 3 项
 2. printHelp 自动更新
 3. 在脚本中实现实际的写入逻辑
 
+#### AI 分析模式选择
+- **`--run-ai`**：脚本直接调 LLM API（确定性编排，利用缓存，平台无关）
+  - 凭证自动从 `~/.dsh/.credentials.yaml` 或环境变量读取
+  - 支持并发控制（CONFIG.ai.concurrency，默认 2）
+  - 已有 ai-results 的模块自动跳过
+- **subagent 模式**：通过 DSH subagent 并发分析（依赖 DSH 平台）
+  - 由 SKILL.md Step 3 指导 agent 执行
+  - 适合 DSH 环境，利用平台模型配置
+- 两种模式共享同一套缓存和结果格式，可混合使用
+
 #### 升版本号
 1. 编辑 `metadata.json` → `version`
 2. 编辑 `package.json` → `version`（保持一致）
@@ -77,7 +87,8 @@ dsh-vue-auth-analyzer 是一个 DeepSeek Harness (DSH) 插件，扫描 Vue 3 项
 ```
 Step 1: --static-only    → .auth-analyzer/static/<module>.json   (AST 解析)
 Step 2: --prepare-ai     → .auth-analyzer/ai-tasks/<module>.json (分组 + prompt)
-Step 3: subagent 并发    → .auth-analyzer/ai-results/<module>.json (AI 分析)
+Step 3a: --run-ai        → .auth-analyzer/ai-results/<module>.json (脚本直接调 LLM)
+Step 3b: OR subagent 并发 → .auth-analyzer/ai-results/<module>.json (DSH subagent)
 Step 4: --merge-ai       → .auth-analyzer/auth-mapping-merged.json (合并)
 ```
 
@@ -97,7 +108,7 @@ Step 4: --merge-ai       → .auth-analyzer/auth-mapping-merged.json (合并)
 - ❌ 不要在 printHelp() 中硬编码 flag/output/workflow 信息 → 改 metadata.json
 - ❌ 不要在 index.js 中硬编码 config schema → 改 metadata.json
 - ❌ 不要把分析结果输出到 `dist/` → 会被项目 build 清理
-- ❌ 不要让脚本直接调用 LLM API → 通过 DSH subagent 委托
+- ❌ 不要在 `--run-ai` 之外让脚本直接调用 LLM API → 用 `--run-ai` flag 或 DSH subagent
 - ❌ 不要用 `tools.read()` 读 JSON 文件给 agent → 用 bash `node -e "require(...)"`
 
 ### 测试方式
@@ -113,6 +124,9 @@ node -e "let c;global.window={__ModuleLoader__:{load:o=>{c=o}}};new Function(req
 cd <project-root>
 node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --static-only --ndjson
 node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepare-ai --ndjson
+# Option A: script runs LLM directly (platform-independent)
+node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai --ndjson
+# Option B: DSH subagent (see SKILL.md Step 3)
 # ... subagent 执行 ...
 node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
 ```
