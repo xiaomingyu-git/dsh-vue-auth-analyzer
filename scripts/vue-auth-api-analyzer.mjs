@@ -43,13 +43,7 @@ const CONFIG = {
   outputDir: "dist",
   ai: {
     enabled: true,
-    apiKey: "",  // Or set env AI_API_KEY
-    baseUrl: "",  // Set via settings or env AI_BASE_URL
-    model: "qwen3.7-max",
-    maxRetries: 3,
-    temperature: 0.1,
-    maxFileSize: 80000,
-    requestInterval: 1500,
+    maxFileSize: 120000,  // Max total file content size per module batch (bytes)
   },
 };
 
@@ -2570,40 +2564,6 @@ function buildSummary(results) {
  * 用法: node scripts/ai-complete-auth.mjs
  */
 
-
-// __dirname already defined
-// ROOT already defined
-
-// ─── 配置 ───────────────────────────────────────────────
-function loadAIConfig() {
-  let apiKey = process.env.AI_API_KEY || CONFIG.ai.apiKey;
-  if (!apiKey) {
-    const credPath = path.join(process.env.HOME || "", ".dsh", ".credentials.yaml");
-    if (fs.existsSync(credPath)) {
-      try {
-        const content = fs.readFileSync(credPath, "utf-8");
-        const match = content.match(/QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/);
-        if (match) apiKey = match[1].trim();
-        if (!apiKey) {
-          const match2 = content.match(/DEEPSEEK_API_KEY:\s*(.+)/);
-          if (match2) apiKey = match2[1].trim();
-        }
-      } catch {}
-    }
-  }
-  return {
-    apiKey,
-    baseUrl: process.env.AI_BASE_URL || CONFIG.ai.baseUrl,
-    model: process.env.AI_MODEL || CONFIG.ai.model,
-    mappingFile: path.join(CONFIG.rootDir, CONFIG.outputDir, "auth-mapping.json"),
-    outputFile: path.join(CONFIG.rootDir, CONFIG.outputDir, "auth-mapping-ai.json"),
-    cacheFile: path.join(CONFIG.rootDir, CONFIG.outputDir, ".ai-auth-cache.json"),
-    maxRetries: CONFIG.ai.maxRetries,
-    temperature: CONFIG.ai.temperature,
-    maxFileSize: CONFIG.ai.maxFileSize,
-    requestInterval: CONFIG.ai.requestInterval,
-  };
-}
 
 // ─── 按模块分组 + 准备 AI 任务 ────────────────────────────
 // 不再自己调用 LLM，而是输出结构化任务文件，由 DSH agent 通过 subagent 并发处理

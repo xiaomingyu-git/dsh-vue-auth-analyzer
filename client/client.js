@@ -35,8 +35,7 @@ window.__ModuleLoader__.load({
       ".ava-status-msg{font-size:12px;line-height:18px;margin-right:auto}",
       ".ava-ok{color:var(--dsw-alias-state-success-primary,#16a34a)}",
       ".ava-err{color:var(--dsw-alias-state-error-primary,#dc2626)}",
-      ".ava-secret{position:relative}",
-      ".ava-secret-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px;padding:2px 4px}",
+
       ".ava-section-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#6b7280);text-transform:uppercase;letter-spacing:0.5px;padding:16px 0 4px;margin:0}",
       ".ava-section-title:first-child{padding-top:4px}",
       /* Progress panel */
@@ -71,17 +70,15 @@ window.__ModuleLoader__.load({
     // ─── Locale ─────────────────────────────────────────────
     const zh = {
       nav: "Auth Analyzer", cardDesc: "Vue 3 按钮-权限-API 映射分析器配置",
-      sectionBasic: "基础配置", sectionAI: "AI 补全配置", sectionRun: "运行分析",
+      sectionBasic: "基础配置", sectionRun: "运行分析",
       viewsDir: "页面目录", viewsDirHint: "Vue 页面文件所在目录（相对于项目根目录）",
       authDirective: "权限指令名", authDirectiveHint: 'v-auth 中的 "auth"，若用 v-permission 则填 "permission"',
       i18nFile: "i18n 翻译文件", i18nFileHint: "中文翻译文件路径，留空跳过 i18n 解析",
       excludePatterns: "排除模式", excludePatternsHint: "逗号分隔的 glob 模式，匹配的目录不参与扫描",
       aiEnabled: "AI 补全", aiEnabledHint: "对静态分析未覆盖的按钮调用 LLM 补全映射",
-      aiModel: "模型", aiModelHint: "LLM 模型名称",
-      aiBaseUrl: "API 地址", aiBaseUrlHint: "OpenAI 兼容 API 的 Base URL",
-      aiApiKey: "API Key", aiApiKeyHint: "LLM API Key，留空则从 ~/.dsh/.credentials.yaml 自动读取",
+
       save: "保存", saved: "✓ 已保存", saving: "保存中…",
-      on: "开", off: "关", showKey: "显示", hideKey: "隐藏",
+      on: "开", off: "关",
       runFull: "静态分析 + 准备AI任务", runStatic: "仅静态分析", cancel: "取消", retry: "重试",
       running: "分析中…", idle: "就绪", cancelled: "已取消",
       phaseStatic: "静态分析", phaseAI: "准备 AI 任务", phaseMerge: "合并结果", phasePrepareAi: "准备 AI 任务",
@@ -92,17 +89,15 @@ window.__ModuleLoader__.load({
     };
     const en = {
       nav: "Auth Analyzer", cardDesc: "Vue 3 button-permission-API mapping analyzer configuration",
-      sectionBasic: "Basic", sectionAI: "AI Completion", sectionRun: "Run Analysis",
+      sectionBasic: "Basic", sectionRun: "Run Analysis",
       viewsDir: "Views Directory", viewsDirHint: "Vue pages directory relative to project root",
       authDirective: "Auth Directive", authDirectiveHint: 'The name in v-auth; use "permission" for v-permission',
       i18nFile: "i18n File", i18nFileHint: "Path to i18n translation file; leave empty to skip",
       excludePatterns: "Exclude Patterns", excludePatternsHint: "Comma-separated glob patterns to exclude",
       aiEnabled: "AI Completion", aiEnabledHint: "Use LLM to complete mappings for unmatched buttons",
-      aiModel: "Model", aiModelHint: "LLM model name",
-      aiBaseUrl: "API Base URL", aiBaseUrlHint: "OpenAI-compatible API base URL",
-      aiApiKey: "API Key", aiApiKeyHint: "LLM API key; leave empty to auto-detect from credentials",
+
       save: "Save", saved: "✓ Saved", saving: "Saving…",
-      on: "On", off: "Off", showKey: "Show", hideKey: "Hide",
+      on: "On", off: "Off",
       runFull: "Static + Prepare AI Tasks", runStatic: "Static Only", cancel: "Cancel", retry: "Retry",
       running: "Running…", idle: "Ready", cancelled: "Cancelled",
       phaseStatic: "Static Analysis", phaseAI: "Prepare AI Tasks", phaseMerge: "Merge Results", phasePrepareAi: "Prepare AI Tasks",
@@ -117,9 +112,7 @@ window.__ModuleLoader__.load({
       viewsDir: "src/views", authDirectiveName: "auth",
       i18nFile: "src/lang/package/zh-cn.ts",
       excludePatterns: "**/components/**,**/login/**,**/profile/**",
-      aiEnabled: true, aiModel: "qwen3.7-max",
-      aiBaseUrl: "",
-      aiApiKey: "",
+      aiEnabled: true,
     };
 
     // ─── AnalyzerCard ───────────────────────────────────────
@@ -131,7 +124,7 @@ window.__ModuleLoader__.load({
       var _s2 = react.useState(null), settings = _s2[0], setSettings = _s2[1];
       var _s3 = react.useState("idle"), saveState = _s3[0], setSaveState = _s3[1];
       var _s4 = react.useState({}), drafts = _s4[0], setDrafts = _s4[1];
-      var _s5 = react.useState(false), showKey = _s5[0], setShowKey = _s5[1];
+
 
       // Run state
       var _s6 = react.useState(null), runState = _s6[0], setRunState = _s6[1];
@@ -260,13 +253,7 @@ window.__ModuleLoader__.load({
         return h("input", { className: "ava-input", type: "text", value: current(key) || "", placeholder: ph || "",
           onChange: function(e) { setDraft(key, e.target.value); } });
       };
-      var secretInput = function(key, ph) {
-        return h("div", { className: "ava-secret" },
-          h("input", { className: "ava-input", type: showKey ? "text" : "password", value: current(key) || "", placeholder: ph || "",
-            onChange: function(e) { setDraft(key, e.target.value); } }),
-          h("button", { type: "button", className: "ava-secret-toggle", onClick: function() { setShowKey(!showKey); } },
-            showKey ? t("hideKey") : t("showKey")));
-      };
+
       var sectionTitle = function(text) { return h("div", { className: "ava-section-title" }, text); };
 
       var statusIcon = function(status) {
@@ -331,14 +318,10 @@ window.__ModuleLoader__.load({
         row(t("excludePatterns"), t("excludePatternsHint"), textInput("excludePatterns", "**/components/**,**/login/**")),
         row(t("cwdLabel"), t("cwdHint"), textInput("cwd", "/path/to/project")),
 
-        sectionTitle(t("sectionAI")),
         row(t("aiEnabled"), t("aiEnabledHint"),
           h("div", { className: "ava-seg" },
             h("button", { type: "button", className: "ava-seg-btn" + (current("aiEnabled") !== false ? " ava-seg-on" : ""), onClick: function() { setDraft("aiEnabled", true); } }, t("on")),
             h("button", { type: "button", className: "ava-seg-btn" + (current("aiEnabled") === false ? " ava-seg-on" : ""), onClick: function() { setDraft("aiEnabled", false); } }, t("off")))),
-        row(t("aiModel"), t("aiModelHint"), textInput("aiModel", "qwen3.7-max")),
-        row(t("aiBaseUrl"), t("aiBaseUrlHint"), textInput("aiBaseUrl", "https://...")),
-        row(t("aiApiKey"), t("aiApiKeyHint"), secretInput("aiApiKey", "sk-...")),
 
         hasChanges ? h("div", { className: "ava-actions" },
           h("span", { className: "ava-status-msg" + (saveState === "saved" ? " ava-ok" : "") },

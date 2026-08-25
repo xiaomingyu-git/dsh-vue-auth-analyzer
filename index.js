@@ -34,17 +34,7 @@ const AnalyzerSettings = z.object({
   excludePatterns: z.string().default('**/components/**,**/login/**,**/profile/**')
     .description('Comma-separated glob patterns to exclude'),
   aiEnabled: z.boolean().default(true)
-    .description('Enable AI completion for unmatched buttons'),
-  aiModel: z.string().default('qwen3.7-max')
-    .description('LLM model name'),
-  aiBaseUrl: z.string().default('')
-    .description('LLM API base URL (OpenAI-compatible endpoint)'),
-  aiApiKey: z.string().role('secret').default('')
-    .description('LLM API key (auto-detect from ~/.dsh/.credentials.yaml if empty)'),
-  aiTemperature: z.number().default(0.1).min(0).max(1).step(0.05)
-    .description('LLM temperature (lower = more deterministic)'),
-  aiMaxRetries: z.natural().default(3)
-    .description('Max retry attempts for failed LLM calls'),
+    .description('Enable AI completion via DSH subagents'),
 })
 
 const SETTINGS_NS = settingsNamespace('dsh-vue-auth-analyzer')
@@ -60,16 +50,9 @@ function syncConfigToFile(settings) {
     [/authDirectiveName:\s*"[^"]*"/, `authDirectiveName: "${settings.authDirectiveName}"`],
     [/i18nFile:\s*(?:null|"[^"]*")/, `i18nFile: ${settings.i18nFile ? '"' + settings.i18nFile + '"' : 'null'}`],
     [/ai\.enabled:\s*(?:true|false)/, `ai.enabled: ${settings.aiEnabled}`],
-    [/model:\s*"[^"]*"/, `model: "${settings.aiModel}"`],
-    [/baseUrl:\s*"[^"]*"/, `baseUrl: "${settings.aiBaseUrl}"`],
-    [/temperature:\s*[\d.]+/, `temperature: ${settings.aiTemperature}`],
-    [/maxRetries:\s*\d+/, `maxRetries: ${settings.aiMaxRetries}`],
   ]
   for (const [pattern, replacement] of replacements) {
     code = code.replace(pattern, replacement)
-  }
-  if (settings.aiApiKey) {
-    code = code.replace(/apiKey:\s*"[^"]*"/, `apiKey: "${settings.aiApiKey}"`)
   }
   const patterns = settings.excludePatterns.split(',').map(p => p.trim()).filter(Boolean)
   code = code.replace(
