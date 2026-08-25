@@ -1,0 +1,143 @@
+{
+  "version": "2.2.0",
+  "name": "dsh-vue-auth-analyzer",
+  "description": "Vue 3 按钮-权限-API 映射分析器",
+  "outputDir": ".auth-analyzer",
+  "flags": [
+    {
+      "flag": "--static-only",
+      "desc": "Only run static AST analysis"
+    },
+    {
+      "flag": "--prepare-ai",
+      "desc": "Prepare AI tasks (per-module files for subagent processing)"
+    },
+    {
+      "flag": "--merge-ai",
+      "desc": "Merge AI results from ai-results/*.json"
+    },
+    {
+      "flag": "--no-cache",
+      "desc": "Clear AI cache before preparing tasks"
+    },
+    {
+      "flag": "--ndjson",
+      "desc": "Output progress as NDJSON events"
+    },
+    {
+      "flag": "-h, --help",
+      "desc": "Show this help"
+    }
+  ],
+  "workflow": [
+    {
+      "step": 1,
+      "cmd": "--static-only",
+      "output": ".auth-analyzer/auth-mapping.json",
+      "desc": "Static AST analysis"
+    },
+    {
+      "step": 2,
+      "cmd": "--prepare-ai",
+      "output": ".auth-analyzer/ai-tasks/ (index + per-module)",
+      "desc": "Prepare AI tasks"
+    },
+    {
+      "step": 3,
+      "cmd": "(subagents write)",
+      "output": ".auth-analyzer/ai-results/<module>.json",
+      "desc": "DSH subagent concurrent analysis"
+    },
+    {
+      "step": 4,
+      "cmd": "--merge-ai",
+      "output": ".auth-analyzer/auth-mapping-merged.json",
+      "desc": "Merge static + AI results"
+    }
+  ],
+  "outputs": [
+    {
+      "file": "static/index.json",
+      "desc": "Static analysis index (small)"
+    },
+    {
+      "file": "static/<module>.json",
+      "desc": "Per-module static results"
+    },
+    {
+      "file": "auth-mapping.json",
+      "desc": "Legacy monolith (backward compat)"
+    },
+    {
+      "file": "ai-tasks/index.json",
+      "desc": "AI task index (small)"
+    },
+    {
+      "file": "ai-tasks/<module>.json",
+      "desc": "Per-module AI task files"
+    },
+    {
+      "file": "ai-results/<module>.json",
+      "desc": "Per-module AI results"
+    },
+    {
+      "file": "auth-mapping-ai.json",
+      "desc": "AI completion summary"
+    },
+    {
+      "file": "auth-mapping-merged.json",
+      "desc": "Final merged report"
+    },
+    {
+      "file": ".ai-auth-cache.json",
+      "desc": "Incremental AI cache"
+    }
+  ],
+  "config": [
+    {
+      "key": "viewsDir",
+      "type": "string",
+      "default": "src/views",
+      "zhLabel": "页面目录",
+      "zhHint": "Vue 页面文件所在目录（相对于项目根目录）",
+      "enLabel": "Views Directory",
+      "enHint": "Vue pages directory relative to project root"
+    },
+    {
+      "key": "authDirectiveName",
+      "type": "string",
+      "default": "auth",
+      "zhLabel": "权限指令名",
+      "zhHint": "v-auth 中的 \"auth\"，若用 v-permission 则填 \"permission\"",
+      "enLabel": "Auth Directive",
+      "enHint": "The name in v-auth; use \"permission\" for v-permission"
+    },
+    {
+      "key": "i18nFile",
+      "type": "string",
+      "default": "src/lang/package/zh-cn.ts",
+      "zhLabel": "i18n 翻译文件",
+      "zhHint": "中文翻译文件路径，留空跳过 i18n 解析",
+      "enLabel": "i18n File",
+      "enHint": "Path to i18n translation file; leave empty to skip"
+    },
+    {
+      "key": "excludePatterns",
+      "type": "string",
+      "default": "**/components/**,**/login/**,**/profile/**",
+      "zhLabel": "排除模式",
+      "zhHint": "逗号分隔的 glob 模式，匹配的目录不参与扫描",
+      "enLabel": "Exclude Patterns",
+      "enHint": "Comma-separated glob patterns to exclude from scanning"
+    },
+    {
+      "key": "aiEnabled",
+      "type": "boolean",
+      "default": true,
+      "zhLabel": "AI 补全",
+      "zhHint": "对静态分析未覆盖的按钮调用 LLM 补全映射",
+      "enLabel": "AI Completion",
+      "enHint": "Use LLM to complete mappings for unmatched buttons"
+    }
+  ]
+}

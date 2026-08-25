@@ -23,19 +23,17 @@ function splitFrontmatter(text) {
   return { description: match?.[1]?.trim(), body }
 }
 
-// ─── Settings schema ────────────────────────────────────
-const AnalyzerSettings = z.object({
-  viewsDir: z.string().default('src/views')
-    .description('Vue pages directory relative to project root'),
-  authDirectiveName: z.string().default('auth')
-    .description('Permission directive name (e.g. "auth" for v-auth, "permission" for v-permission)'),
-  i18nFile: z.string().default('src/lang/package/zh-cn.ts')
-    .description('i18n translation file path (leave empty to skip)'),
-  excludePatterns: z.string().default('**/components/**,**/login/**,**/profile/**')
-    .description('Comma-separated glob patterns to exclude'),
-  aiEnabled: z.boolean().default(true)
-    .description('Enable AI completion via DSH subagents'),
-})
+// ─── Settings schema (generated from metadata.json) ─────
+let _meta;
+try { _meta = JSON.parse(readFileSync(join(packageRoot, 'metadata.json'), 'utf-8')); } catch {}
+const AnalyzerSettings = z.object(Object.fromEntries(
+  (_meta?.config || []).map(c => {
+    const schema = c.type === 'boolean' ? z.boolean().default(c.default)
+      : c.type === 'number' ? z.number().default(c.default)
+      : z.string().default(c.default);
+    return [c.key, schema.description(c.enHint)];
+  })
+))
 
 const SETTINGS_NS = settingsNamespace('dsh-vue-auth-analyzer')
 
@@ -45,20 +43,24 @@ function syncConfigToFile(settings) {
   if (!existsSync(scriptPath)) return
   let code = readFileSync(scriptPath, 'utf8')
 
-  const replacements = [
-    [/viewsDir:\s*"[^"]*"/, `viewsDir: "${settings.viewsDir}"`],
-    [/authDirectiveName:\s*"[^"]*"/, `authDirectiveName: "${settings.authDirectiveName}"`],
-    [/i18nFile:\s*(?:null|"[^"]*")/, `i18nFile: ${settings.i18nFile ? '"' + settings.i18nFile + '"' : 'null'}`],
-    [/ai\.enabled:\s*(?:true|false)/, `ai.enabled: ${settings.aiEnabled}`],
-  ]
-  for (const [pattern, replacement] of replacements) {
-    code = code.replace(pattern, replacement)
+  // Build replacements from metadata.json config entries
+  const meta = _meta || { config: [] }
+  for (const c of meta.config) {
+    const val = settings[c.key]
+    if (val === undefined) continue
+    if (c.key === 'excludePatterns') {
+      const patterns = (val || '').split(',').map(p => p.trim()).filter(Boolean)
+      code = code.replace(/excludePatterns:\s*\[[^\]]*\]/, `excludePatterns: [${patterns.map(p => '"' + p + '"').join(', ')}]`)
+    } else if (c.key === 'i18nFile') {
+      code = code.replace(/i18nFile:\s*(?:null|"[^"]*")/, `i18nFile: ${val ? '"' + val + '"' : 'null'}`)
+    } else if (c.type === 'boolean') {
+      const pattern = c.key === 'aiEnabled' ? /ai\.enabled:\s*(?:true|false)/ : new RegExp(c.key + ':\\s*(?:true|false)')
+      const target = c.key === 'aiEnabled' ? 'ai.enabled' : c.key
+      code = code.replace(pattern, `${target}: ${val}`)
+    } else {
+      code = code.replace(new RegExp(c.key + ':\\s*"[^"]*"' ), `${c.key}: "${val}"`)
+    }
   }
-  const patterns = settings.excludePatterns.split(',').map(p => p.trim()).filter(Boolean)
-  code = code.replace(
-    /excludePatterns:\s*\[[^\]]*\]/,
-    `excludePatterns: [${patterns.map(p => '"' + p + '"').join(', ')}]`
-  )
   writeFileSync(scriptPath, code, 'utf8')
 }
 

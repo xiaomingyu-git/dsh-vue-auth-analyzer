@@ -77,37 +77,25 @@ function parseArgs() {
 }
 
 function printHelp() {
-  console.log(`
-Vue Auth-API Analyzer v2
+  // Read from metadata.json — single source of truth for all documentation
+  let meta;
+  try {
+    meta = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "metadata.json"), "utf-8"));
+  } catch {
+    console.log("Vue Auth-API Analyzer\nRun with --help after ensuring metadata.json exists.");
+    return;
+  }
+  const pad = (s, len) => s + " ".repeat(Math.max(0, len - s.length));
+  const maxFlagLen = Math.max(...meta.flags.map(f => f.flag.length)) + 2;
+  const maxFileLen = Math.max(...meta.outputs.map(o => o.file.length)) + 2;
 
-Usage:
-  node vue-auth-api-analyzer.mjs [options]
-
-Options:
-  --static-only    Only run static AST analysis
-  --prepare-ai     Prepare AI tasks (per-module files for subagent processing)
-  --merge-ai       Merge AI results from dist/ai-results/*.json
-  --no-cache       Clear AI cache before preparing tasks
-  --ndjson         Output progress as NDJSON events
-  -h, --help       Show this help
-
-Workflow:
-  1. --static-only      → .auth-analyzer/auth-mapping.json
-  2. --prepare-ai       → .auth-analyzer/ai-tasks/ (index + per-module)
-  3. (subagents write)  → .auth-analyzer/ai-results/<module>.json
-  4. --merge-ai         → .auth-analyzer/auth-mapping-merged.json
-
-Output (default directory: .auth-analyzer/):
-  static/index.json          Static analysis index (small)
-  static/<module>.json       Per-module static results
-  auth-mapping.json          Legacy monolith (backward compat)
-  ai-tasks/index.json        AI task index (small)
-  ai-tasks/<module>.json     Per-module AI task files
-  ai-results/<module>.json   Per-module AI results
-  auth-mapping-ai.json       AI completion summary
-  auth-mapping-merged.json   Final merged report
-  .ai-auth-cache.json        Incremental AI cache
-`);
+  let out = `\nVue Auth-API Analyzer v${meta.version}\n\nUsage:\n  node vue-auth-api-analyzer.mjs [options]\n\nOptions:\n`;
+  for (const f of meta.flags) out += "  " + pad(f.flag, maxFlagLen) + f.desc + "\n";
+  out += "\nWorkflow:\n";
+  for (const w of meta.workflow) out += "  " + w.step + ". " + pad(w.cmd, 20) + "→ " + w.output + "\n";
+  out += "\nOutput (default directory: " + meta.outputDir + "/):\n";
+  for (const o of meta.outputs) out += "  " + pad(o.file, maxFileLen) + o.desc + "\n";
+  console.log(out);
 }
 
 // ============================================================
