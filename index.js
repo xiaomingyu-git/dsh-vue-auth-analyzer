@@ -1,7 +1,7 @@
 // dsh-vue-auth-analyzer bundle entry point.
 // Registers agent skill + Settings namespace + HTTP routes for GUI.
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
@@ -67,19 +67,49 @@ let activeRun = null // { child, abortController }
 
 // ─── Plugin entry ───────────────────────────────────────
 export function apply(ctx) {
-  // Register skill via dynamic inject (graceful if skills service unavailable)
+  // Register skill with hot-reload: re-reads SKILL.md on file change
   ctx.inject(['skills'], (sctx) => {
     const skillPath = join(packageRoot, 'SKILL.md')
-    const { description, body } = splitFrontmatter(readFileSync(skillPath, 'utf8'))
-    sctx.effect(() =>
-      sctx.skills.register({
-        name: 'dsh-vue-auth-analyzer',
-        source: 'bundled',
-        description: description ?? 'Vue 3 button-permission-API mapping analyzer.',
-        content: body,
-        resourceBase: { kind: 'directory', path: packageRoot },
-      }),
-    )
+    let dispose = null
+
+    function registerSkill() {
+      try {
+        const { description, body } = splitFrontmatter(readFileSync(skillPath, 'utf8'))
+        // Dispose previous registration (invalidates cache)
+        if (dispose) dispose()
+        dispose = sctx.skills.register({
+          name: 'dsh-vue-auth-analyzer',
+          source: 'bundled',
+          description: description ?? 'Vue 3 button-permission-API mapping analyzer.',
+          content: body,
+          resourceBase: { kind: 'directory', path: packageRoot },
+        })
+      } catch (e) {
+        console.error('[dsh-vue-auth-analyzer] Skill registration failed:', e?.message)
+      }
+    }
+
+    // Initial registration
+    registerSkill()
+
+    // Watch for SKILL.md changes (poll every 5s, low overhead)
+    let lastMtime = 0
+    const watchTimer = setInterval(() => {
+      try {
+        const { mtimeMs } = statSync(skillPath)
+        if (mtimeMs !== lastMtime) {
+          lastMtime = mtimeMs
+          registerSkill()
+          console.log('[dsh-vue-auth-analyzer] SKILL.md reloaded')
+        }
+      } catch {}
+    }, 5000)
+
+    // Cleanup on plugin unload
+    sctx.effect(() => () => {
+      clearInterval(watchTimer)
+      if (dispose) dispose()
+    })
   })
 
   // Register settings via dynamic inject (graceful if settings service unavailable)
