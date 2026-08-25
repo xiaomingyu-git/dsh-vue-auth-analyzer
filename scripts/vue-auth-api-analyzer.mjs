@@ -2718,7 +2718,7 @@ async function prepareAITasks() {
       module: moduleName,
       buttons: buttons.map(b => ({ authValue: b.authValue, name: b.name, file: b.file, tag: b.tag })),
       prompt,
-      outputFile: "dist/ai-results/" + safeName + ".json",
+      outputFile: path.join(ROOT, CONFIG.outputDir, "ai-results", safeName + ".json"),
     });
 
     pendingModules++;
@@ -2742,7 +2742,7 @@ async function prepareAITasks() {
       id: task.id,
       module: task.module,
       buttons: task.buttons.length,
-      taskFile: "dist/ai-tasks/" + task.id + ".json",
+      taskFile: path.join(tasksDir, task.id + ".json"),
       outputFile: task.outputFile,
     });
   }
@@ -3031,7 +3031,8 @@ async function main() {
     await prepareAITasks();
   }
 
-  if (staticData) {
+  // Phase 3: Only merge when explicitly requested (--merge-ai)
+  if (opts.mergeAi && staticData) {
     emit({ type: "phase", phase: "merge", label: "Merge Results" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 3: Merge Results");

@@ -20,6 +20,8 @@ description: Use when the user asks to analyze button permissions, scan page API
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --static-only --ndjson
 ```
 
+输出 `dist/auth-mapping.json`。**只产出静态结果，不做合并。**
+
 ### Step 2: 准备 AI 任务
 
 ```bash
@@ -27,8 +29,10 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 ```
 
 输出目录 `dist/ai-tasks/`，包含：
-- `index.json` — **小文件**，只有任务元数据（模块名、按钮数、文件路径），不含源码
-- `<module>.json` — 每个模块一个文件，包含完整的 prompt（含源码）
+- `index.json` — **小文件**，只有任务元数据（模块名、按钮数、绝对路径），不含源码
+- `<module>.json` — 每个模块一个文件，包含完整 prompt（含源码）和 outputFile 绝对路径
+
+**只产出任务文件，不做合并。**
 
 读取 `dist/ai-tasks/index.json`，检查 `pendingModules`：
 - **0** → 跳到 Step 5
@@ -80,7 +84,7 @@ subagent({
 
 {taskFile 中 prompt 字段的完整内容}
 
-请将分析结果用 write tool 写入文件：{project-root}/{task.outputFile}
+请将分析结果用 write tool 写入文件：{task.outputFile}（这是绝对路径，直接使用）
 
 输出格式（严格 JSON）：
 {
@@ -110,7 +114,12 @@ subagent({
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
 ```
 
-这会读取 `dist/ai-results/*.json` 的所有文件并合并。**不要自己写合并逻辑。**
+这一步将静态结果 + AI 结果合并为最终报告：
+- 读取 `dist/auth-mapping.json`（Step 1 的静态结果）
+- 读取 `dist/ai-results/*.json`（Step 3 的 AI 结果）
+- 输出 `dist/auth-mapping-ai.json` + `dist/auth-mapping-merged.json`
+
+**不要自己写合并逻辑。只在所有 subagent 完成后运行一次。**
 
 ### Step 5: 汇报
 
