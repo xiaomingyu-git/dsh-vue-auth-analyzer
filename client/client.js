@@ -179,14 +179,17 @@ window.__ModuleLoader__.load({
         } catch(e) { setSaveState("idle"); }
       };
 
-      var startRun = async function(staticOnly) {
+      var startRun = async function(mode) {
         var ac = new AbortController();
         setRunState({ phase: "starting", logs: [], current: 0, total: 0, stats: null, status: "running", abortController: ac });
         try {
+          var bodyOpts = { cwd: current("cwd") || undefined };
+          if (mode === "static") bodyOpts.staticOnly = true;
+          if (mode === "runAi") bodyOpts.runAi = true;
           var res = await fetch("/dsh-vue-auth-analyzer/run", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ staticOnly: !!staticOnly, cwd: current("cwd") || undefined }),
+            body: JSON.stringify(bodyOpts),
             signal: ac.signal,
           });
           if (!res.ok) {
@@ -340,10 +343,12 @@ window.__ModuleLoader__.load({
             logs.map(function(log, idx) {
               if (log.type === "phase") return h("div", { key: idx, className: "ava-phase-line" }, "▸ " + log.label);
               if (log.type === "ai-progress") {
+                var statusLabel = log.status === "done" ? "✅" : log.status === "cache-hit" ? "⏭" : log.status === "failed" ? "❌" : log.status === "analyzing" ? "🔄" : "⏳";
+                var btnInfo = log.buttons ? " (" + log.buttons + " buttons)" : "";
                 return h("div", { key: idx, className: "ava-log-line" },
                   h("span", { className: "ava-log-icon" }, statusIcon(log.status)),
-                  h("span", { className: "ava-log-text" }, "[" + log.current + "/" + log.total + "] " + log.page + " — " + log.auth),
-                  h("span", { className: "ava-log-meta" }, log.name || ""));
+                  h("span", { className: "ava-log-text" }, log.page + btnInfo),
+                  h("span", { className: "ava-log-meta" }, statusLabel));
               }
               if (log.type === "ai-done" && log.stats) {
                 var s = log.stats;
@@ -394,14 +399,14 @@ window.__ModuleLoader__.load({
 
         sectionTitle(t("sectionRun")),
         h("div", { className: "ava-row", style: { gap: "8px" } },
-          h(Button, { variant: "outline", size: "sm", disabled: isRunning, onClick: function() { startRun(true); } },
+          h(Button, { variant: "outline", size: "sm", disabled: isRunning, onClick: function() { startRun("static"); } },
             t("runStatic")),
-          h(Button, { variant: "primary", size: "sm", disabled: isRunning, onClick: function() { startRun(false); } },
+          h(Button, { variant: "primary", size: "sm", disabled: isRunning, onClick: function() { startRun("runAi"); } },
             isRunning ? t("running") : t("runFull")),
           h(Button, { variant: "outline", size: "sm", disabled: isRunning, onClick: function() { startMerge(); } },
             t("runMerge")),
           runState && runState.status !== "running" && runState.status !== "idle" && runState.status !== null
-            ? h(Button, { variant: "outline", size: "sm", onClick: function() { startRun(false); } }, t("retry"))
+            ? h(Button, { variant: "outline", size: "sm", onClick: function() { startRun("runAi"); } }, t("retry"))
             : null
         ),
         renderProgress()

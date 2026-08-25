@@ -175,6 +175,7 @@ export function apply(ctx) {
 
         const args = ['--ndjson']
         if (opts.staticOnly) args.push('--static-only')
+        if (opts.runAi) args.push('--run-ai')
         if (opts.noCache) args.push('--no-cache')
 
         // Determine working directory (project root)
