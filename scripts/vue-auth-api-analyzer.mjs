@@ -3287,8 +3287,8 @@ async function main() {
     await prepareAITasks();
   }
 
-  // Phase 3: Only merge when explicitly requested (--merge-ai)
-  if (opts.mergeAi && staticData) {
+  // Phase 3: Merge static + AI into final report (--merge-ai or --run-ai)
+  if ((opts.mergeAi || opts.runAi) && staticData) {
     emit({ type: "phase", phase: "merge", label: "Merge Results" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 3: Merge Results");
