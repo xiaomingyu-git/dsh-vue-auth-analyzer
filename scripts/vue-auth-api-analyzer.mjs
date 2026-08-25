@@ -2631,11 +2631,17 @@ function buildBatchPrompt(moduleName, buttons, fileContents, staticContext) {
     staticSection += "\n";
   }
 
-  return "你是一个 Vue 3 + TypeScript 代码分析专家。分析以下源码，找出每个按钮最终调用的后端 API 接口。\n\n" +
+  return "你是一个 Vue 3 + TypeScript 代码分析专家。分析以下源码，找出每个按钮最终触发的后端 API 接口。\n\n" +
     "## 分析规则\n" +
     "1. 找到每个 v-auth 指令对应的按钮元素\n" +
-    "2. 追踪 @click 事件处理函数 → 弹窗/对话框 → request()/axios 调用 → url + method\n" +
-    "3. 如果按钮只打开预览/详情弹窗且不涉及 API 调用，apis 返回空数组\n" +
+    "2. **关键：追踪到最终的 API 调用，即使中间经过弹窗/抽屉**。大量新建/编辑/同步按钮仅负责打开弹窗或抽屉，实际 API 调用在子组件的确认按钮中触发。你必须：\n" +
+    "   a. 找到按钮的 @click 处理函数\n" +
+    "   b. 如果处理函数打开了弹窗/抽屉/对话框（如 dialogVisible=true、drawerVisible=true、ElMessageBox 等），找到对应的子组件\n" +
+    "   c. 在子组件中找到确认/提交按钮的处理函数\n" +
+    "   d. 追踪该处理函数中的 request()/axios 调用，提取 url + method\n" +
+    "   e. 将原始按钮（新建/编辑/同步）关联到这个最终的 API\n" +
+    "   f. 在 reasoning 中说明完整链路，如：新建按钮 → 打开 AddModal → 确认按钮 → handleSubmit → POST /api/apps\n" +
+    "3. **只有纯展示型弹窗才返回空 apis**：如果按钮打开的是纯预览/详情弹窗（只读展示数据，没有确认/提交按钮，没有任何写操作），apis 才返回空数组\n" +
     "4. el-upload 追踪 :http-request 或 :on-change\n" +
     "5. 条件表达式如 dataSource.id ? PUT : POST，根据上下文判断\n" +
     "6. router.push / window.open → method: NAVIGATE, url: 目标路径\n\n" +
