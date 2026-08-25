@@ -81,7 +81,7 @@ window.__ModuleLoader__.load({
 
       save: "保存", saved: "✓ 已保存", saving: "保存中…",
       on: "开", off: "关",
-      runFull: "全量分析", runStatic: "静态分析", cancel: "取消", retry: "重试",
+      runFull: "全量分析", runStatic: "静态分析", runMerge: "合并结果", cancel: "取消", retry: "重试",
       tasksReady: "AI 任务已准备好", tasksReadyHint: "请在对话中说「继续分析」让 Agent 并发处理 AI 任务",
       running: "分析中…", idle: "就绪", cancelled: "已取消",
       phaseStatic: "静态分析", phaseAI: "准备 AI 任务", phaseMerge: "合并结果", phasePrepareAi: "准备 AI 任务",
@@ -101,7 +101,7 @@ window.__ModuleLoader__.load({
 
       save: "Save", saved: "✓ Saved", saving: "Saving…",
       on: "On", off: "Off",
-      runFull: "Full Analysis", runStatic: "Static Analysis", cancel: "Cancel", retry: "Retry",
+      runFull: "Full Analysis", runStatic: "Static Analysis", runMerge: "Merge Results", cancel: "Cancel", retry: "Retry",
       tasksReady: "AI Tasks Ready", tasksReadyHint: "Say continue analysis in chat to let Agent process AI tasks concurrently",
       running: "Running…", idle: "Ready", cancelled: "Cancelled",
       phaseStatic: "Static Analysis", phaseAI: "Prepare AI Tasks", phaseMerge: "Merge Results", phasePrepareAi: "Prepare AI Tasks",
@@ -241,6 +241,56 @@ window.__ModuleLoader__.load({
         setRunState(function(s) { return s ? Object.assign({}, s, { status: "cancelled" }) : s; });
       };
 
+      var startMerge = async function() {
+        var ac = new AbortController();
+        setRunState({ phase: "Merging", logs: [], current: 0, total: 0, stats: null, status: "running", abortController: ac });
+        try {
+          var res = await fetch("/dsh-vue-auth-analyzer/merge", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ cwd: current("cwd") || undefined }),
+            signal: ac.signal,
+          });
+          if (!res.ok) {
+            setRunState(function(s) { return Object.assign({}, s, { status: "error", logs: s.logs.concat([{ type: "error", message: "HTTP " + res.status }]) }); });
+            return;
+          }
+          var reader = res.body.getReader();
+          var decoder = new TextDecoder();
+          var buffer = "";
+          while (true) {
+            var chunk = await reader.read();
+            if (chunk.done) break;
+            buffer += decoder.decode(chunk.value, { stream: true });
+            var lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (var i = 0; i < lines.length; i++) {
+              var line = lines[i].trim();
+              if (!line) continue;
+              try {
+                var evt = JSON.parse(line);
+                setRunState(function(s) {
+                  var next = Object.assign({}, s);
+                  next.logs = s.logs.concat([evt]);
+                  if (evt.type === "phase") next.phase = evt.label;
+                  if (evt.type === "ai-done") next.stats = evt.stats;
+                  if (evt.type === "done") next.status = "done";
+                  if (evt.type === "exit") {
+                    if (next.status === "running") next.status = evt.code === 0 ? "done" : "error";
+                  }
+                  if (evt.type === "error") next.status = "error";
+                  return next;
+                });
+              } catch(e) {}
+            }
+          }
+        } catch(e) {
+          if (e.name !== "AbortError") {
+            setRunState(function(s) { return Object.assign({}, s, { status: "error", logs: s.logs.concat([{ type: "error", message: e.message }]) }); });
+          }
+        }
+      };
+
       var isRunning = runState && runState.status === "running";
       var pct = runState && runState.total > 0 ? Math.round((runState.current / runState.total) * 100) : 0;
 
@@ -348,6 +398,8 @@ window.__ModuleLoader__.load({
             t("runStatic")),
           h(Button, { variant: "primary", size: "sm", disabled: isRunning, onClick: function() { startRun(false); } },
             isRunning ? t("running") : t("runFull")),
+          h(Button, { variant: "outline", size: "sm", disabled: isRunning, onClick: function() { startMerge(); } },
+            t("runMerge")),
           runState && runState.status !== "running" && runState.status !== "idle" && runState.status !== null
             ? h(Button, { variant: "outline", size: "sm", onClick: function() { startRun(false); } }, t("retry"))
             : null
