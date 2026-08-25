@@ -3275,9 +3275,10 @@ async function main() {
       aiData = JSON.parse(fs.readFileSync(AI_OUTPUT, "utf-8"));
     }
   } else if (!opts.staticOnly && CONFIG.ai.enabled) {
+    // Default (no flags): run full pipeline (same as --run-ai)
     emit({ type: "phase", phase: "prepare-ai", label: "Prepare AI Tasks" });
     console.log("\n" + "=".repeat(60));
-    console.log("PHASE 2: Prepare AI Tasks");
+    console.log("PHASE 2a: Prepare AI Tasks");
     console.log("=".repeat(60));
     if (opts.noCache) {
       const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
@@ -3285,10 +3286,25 @@ async function main() {
       console.log("AI cache cleared.");
     }
     await prepareAITasks();
+
+    emit({ type: "phase", phase: "run-ai", label: "Run AI Analysis" });
+    console.log("\n" + "=".repeat(60));
+    console.log("PHASE 2b: Run AI Analysis (direct LLM)");
+    console.log("=".repeat(60));
+    await runAICompletion();
+
+    emit({ type: "phase", phase: "merge-ai", label: "Merge AI Results" });
+    console.log("\n" + "=".repeat(60));
+    console.log("PHASE 2c: Merge Results");
+    console.log("=".repeat(60));
+    mergeAIResults();
+    if (fs.existsSync(AI_OUTPUT)) {
+      aiData = JSON.parse(fs.readFileSync(AI_OUTPUT, "utf-8"));
+    }
   }
 
-  // Phase 3: Merge static + AI into final report (--merge-ai or --run-ai)
-  if ((opts.mergeAi || opts.runAi) && staticData) {
+  // Phase 3: Merge static + AI into final report
+  if (staticData && !opts.staticOnly) {
     emit({ type: "phase", phase: "merge", label: "Merge Results" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 3: Merge Results");
