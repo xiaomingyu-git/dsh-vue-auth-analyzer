@@ -5,14 +5,24 @@ description: Use when the user asks to analyze button permissions, scan page API
 
 # Vue Auth-API Analyzer
 
-扫描 Vue 3 项目中所有带权限指令（如 `v-auth`）的按钮，追踪其调用的后端 API 接口，生成完整的 **按钮 → 权限标识 → API** 映射报告。
+扫描 Vue 3 项目中所有带权限指令（如 `v-auth`）的按钮，追踪其调用的后端 API 接口，生成完整的 **按钮 → 权限标识 → HTTP API** 映射报告。
 
-## 工作原理
+## ⛔ 禁止事项（违反则结果无效）
 
-1. **静态 AST 分析**：解析 Vue SFC，追踪 `v-auth` → `@click` → `request()` → URL + method
-2. **AI 补全**：对未覆盖的按钮，按模块分组后通过 DSH subagent **分批并发**分析
+- **禁止自己手动分析源码** — 不要自己读 Vue 文件、grep 权限码、猜测 API
+- **禁止生成 Markdown 报告** — 不要写 .md 文件，所有输出由脚本生成 JSON
+- **禁止只列函数名** — "app.getAppsList" 不是 API 映射，必须是 "GET /iam/apps"
+- **禁止跳过任何步骤** — 必须按 Step 1→2→3→4→5 顺序执行
+- **禁止自己写合并/分析脚本** — 只用本插件提供的脚本命令
 
-## 执行流程（严格按顺序）
+## ✅ 你必须做的
+
+使用本插件的脚本工具完成分析。脚本会：
+1. AST 解析 Vue SFC，精确追踪 @click → handler → request() → HTTP method + URL
+2. 按模块分组，通过 subagent 并发补全静态分析未覆盖的按钮
+3. 自动合并生成结构化 JSON 报告
+
+## 执行流程（严格按顺序，不可跳过）
 
 ### Step 1: 静态分析
 
@@ -20,19 +30,16 @@ description: Use when the user asks to analyze button permissions, scan page API
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --static-only --ndjson
 ```
 
-输出 `.auth-analyzer/auth-mapping.json`。**只产出静态结果，不做合并。**
+输出 `.auth-analyzer/auth-mapping.json` + `.auth-analyzer/static/<module>.json`。
+**只产出静态结果，不做合并。**
 
 ### Step 2: 准备 AI 任务
 
 ```bash
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepare-ai --ndjson
-# 如需清除缓存重新生成任务：加 --no-cache
 ```
 
-输出目录 `.auth-analyzer/ai-tasks/`，包含：
-- `index.json` — **小文件**，只有任务元数据（模块名、按钮数、绝对路径），不含源码
-- `<module>.json` — 每个模块一个文件，包含完整 prompt（含源码）和 outputFile 绝对路径
-
+输出 `.auth-analyzer/ai-tasks/index.json` + 每模块任务文件。
 **只产出任务文件，不做合并。**
 
 读取 `.auth-analyzer/ai-tasks/index.json`，检查 `pendingModules`：
@@ -61,7 +68,7 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 #### 3.2 对每一批执行
 
 对当前批次的每个 task：
-1. **读取** `task.taskFile`（如 `.auth-analyzer/ai-tasks/menu.json`）获取 prompt
+1. **读取** `task.taskFile`（绝对路径）获取 prompt
 2. 用 prompt 内容启动 subagent
 
 **在同一个 assistant message 中**启动当前批次的所有 subagent：
@@ -109,13 +116,12 @@ subagent({
 
 ### Step 4: 合并结果
 
-**所有批次完成后**，运行一次合并：
+**所有批次完成后**，运行合并命令。这一步将静态结果 + AI 结果合并为最终报告：
 
 ```bash
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
 ```
 
-这一步将静态结果 + AI 结果合并为最终报告：
 - 读取 `.auth-analyzer/auth-mapping.json`（Step 1 的静态结果）
 - 读取 `.auth-analyzer/ai-results/*.json`（Step 3 的 AI 结果）
 - 输出 `.auth-analyzer/auth-mapping-ai.json` + `.auth-analyzer/auth-mapping-merged.json`
@@ -124,19 +130,11 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge
 
 ### Step 5: 汇报
 
-读取 `.auth-analyzer/auth-mapping-merged.json`，展示：
+读取 `.auth-analyzer/auth-mapping-merged.json`，向用户展示：
 1. 覆盖率统计
-2. 每页按钮-权限-API 映射表
+2. 每页按钮-权限-API 映射表（包含 HTTP method + URL）
 3. 低置信度/失败条目
 4. 建议
-
-## 配置
-
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `viewsDir` | `src/views` | Vue 页面目录 |
-| `i18nFile` | `src/lang/package/zh-cn.ts` | i18n 文件，`null` 跳过 |
-| `excludePatterns` | `["**/components/**", ...]` | 排除目录 |
 
 ## 输出文件
 
@@ -150,6 +148,14 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge
 | `.auth-analyzer/ai-tasks/<module>.json` | 每模块 AI 任务（含 prompt） |
 | `.auth-analyzer/ai-results/<module>.json` | 每模块 AI 结果 |
 | `.auth-analyzer/.ai-auth-cache.json` | 增量缓存 |
+
+## 配置
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `viewsDir` | `src/views` | Vue 页面目录 |
+| `i18nFile` | `src/lang/package/zh-cn.ts` | i18n 文件，`null` 跳过 |
+| `excludePatterns` | `["**/components/**", ...]` | 排除目录 |
 
 ## 适配
 
