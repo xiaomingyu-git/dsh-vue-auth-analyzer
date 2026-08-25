@@ -2744,8 +2744,9 @@ async function prepareAITasks() {
   let pendingModules = 0;
 
   for (const [moduleName, buttons] of Object.entries(groups)) {
-    // Check if all buttons in this module are cached
-    const allCached = buttons.every(b => cache[b.page + "|" + b.authValue]);
+    // Check if all UNMATCHED buttons in this module are cached
+    const unmatchedButtons = buttons.filter(b => !b.matched);
+    const allCached = unmatchedButtons.length > 0 && unmatchedButtons.every(b => cache[b.page + "|" + b.authValue]);
     if (allCached) {
       cachedModules++;
       emit({ type: "ai-progress", current: tasks.length + 1, total: moduleCount, page: moduleName, status: "cache-hit", buttons: buttons.length });
@@ -2893,7 +2894,7 @@ function mergeAIResults() {
 
   const resultFiles = fs.readdirSync(resultsDir).filter(f => f.endsWith(".json"));
   if (resultFiles.length === 0) {
-    console.error("❌ dist/ai-results/ 中没有结果文件");
+    console.error("❌ .auth-analyzer/ai-results/ 中没有结果文件");
     process.exit(1);
   }
 
