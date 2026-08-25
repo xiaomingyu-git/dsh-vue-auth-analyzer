@@ -2743,7 +2743,8 @@ function mergeAIResults() {
   const tasksFile = path.join(OUTPUT_DIR, "ai-tasks.json");
   const cache = loadCache(cacheFile);
 
-  // Load tasks to map authId → original authValue + page
+  // Build authId → {page, authValue} mapping.
+  // Prefer ai-tasks.json (from --prepare-ai); fall back to auth-mapping.json (static output).
   const authIdToOriginal = new Map();
   if (fs.existsSync(tasksFile)) {
     try {
@@ -2755,6 +2756,23 @@ function mergeAIResults() {
         });
       });
     } catch {}
+  }
+  // Fallback: read static analysis output to build the mapping
+  if (authIdToOriginal.size === 0) {
+    const mappingFile = path.join(OUTPUT_DIR, "auth-mapping.json");
+    if (fs.existsSync(mappingFile)) {
+      try {
+        const mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
+        (Array.isArray(mapping) ? mapping : []).forEach(page => {
+          (page.authBindings || []).forEach(b => {
+            const cleanId = (b.authValue || "").replace(/['"]/g, "");
+            if (cleanId && !authIdToOriginal.has(cleanId)) {
+              authIdToOriginal.set(cleanId, { page: page.page, authValue: b.authValue });
+            }
+          });
+        });
+      } catch {}
+    }
   }
 
   if (!fs.existsSync(resultsDir)) {
