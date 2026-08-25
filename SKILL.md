@@ -165,3 +165,14 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge
 - **v-permission**: 搜索 `prop.name === "auth"` 替换为 `"permission"`
 - **非 request()**: 修改 `resolveApiCall` 识别你的封装函数
 - **无 i18n**: `CONFIG.i18nFile = null`
+
+## 开发者文档
+
+如果你需要**修改本插件本身**（而非使用它分析项目），请阅读 `AGENTS.md`。
+
+关键规则：
+- **`metadata.json` 是文档单一数据源**。CLI flags、配置字段、输出文件列表、版本号都由它驱动
+- `printHelp()` 和 `index.js` schema 从 metadata.json 动态生成，不要硬编码
+- 新增 flag → 改 metadata.json + parseArgs() + main()，printHelp 自动更新
+- 新增配置 → 改 metadata.json + CONFIG + client locale/DEFAULTS/表单，schema 自动更新
+- 升版本 → 改 metadata.json + package.json
