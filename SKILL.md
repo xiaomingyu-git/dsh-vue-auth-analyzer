@@ -9,13 +9,10 @@ description: Use when the user asks to analyze button permissions, scan page API
 
 ## 工作原理
 
-采用**双轨分析**：
-1. **静态 AST 分析**（零成本）：解析 Vue SFC 模板和脚本，追踪 `v-auth` → `@click handler` → `request() 调用` → `URL + method`
-2. **AI 补全**（按需）：对静态分析未覆盖的按钮，按模块分组后通过 DSH subagent **分批并发**分析源码补全映射
+1. **静态 AST 分析**：解析 Vue SFC，追踪 `v-auth` → `@click` → `request()` → URL + method
+2. **AI 补全**：对未覆盖的按钮，按模块分组后通过 DSH subagent **分批并发**分析
 
-## 完整执行流程
-
-当用户要求分析时，**严格按以下步骤执行**：
+## 执行流程（严格按顺序）
 
 ### Step 1: 静态分析
 
@@ -23,123 +20,119 @@ description: Use when the user asks to analyze button permissions, scan page API
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --static-only --ndjson
 ```
 
-输出 `dist/auth-mapping.json`。
-
 ### Step 2: 准备 AI 任务
 
 ```bash
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepare-ai --ndjson
 ```
 
-输出 `dist/ai-tasks.json`。读取该文件，检查 `pendingModules` 字段：
-- 如果为 0，跳到 Step 5（全部命中缓存）
-- 如果 > 0，继续 Step 3
+读取 `dist/ai-tasks.json`，检查 `pendingModules`：
+- **0** → 跳到 Step 5
+- **> 0** → 继续 Step 3
 
-### Step 3: 分批启动 subagent 分析（关键步骤）
+### Step 3: 分批 subagent 分析
 
-**⚠️ 必须控制并发数量，否则会触发 LLM API 429 限流！**
+#### ⚠️ 核心规则
 
-#### 3.1 合并小模块
+- **每批最多 5 个 subagent**，绝不超过
+- **等当前批次全部完成后再启动下一批**
+- **不要自己写合并脚本**，用 `--merge-ai` 命令
 
-读取 `dist/ai-tasks.json` 中的 `tasks` 数组。将按钮数 ≤ 3 的小模块合并为一个组合任务，大模块（> 3 按钮）保持独立。目标：**总任务数控制在 5-8 个**。
+#### 3.1 读取任务列表
 
-合并方式：将多个小模块的 prompt 拼接，用分隔线隔开：
+读取 `dist/ai-tasks.json` 中的 `tasks` 数组。如果任务数 > 5，分成多批：
+
 ```
-=== 模块: /module-a (2 buttons) ===
-{task_a.prompt}
-
-=== 模块: /module-b (1 button) ===  
-{task_b.prompt}
+批次 1: tasks[0..4]   (最多5个)
+批次 2: tasks[5..9]   (最多5个)
+批次 3: tasks[10..14] (最多5个)
+...依此类推
 ```
 
-结果写入各自独立的 outputFile，每个模块一个 JSON 文件。
+#### 3.2 对每一批执行
 
-#### 3.2 分批启动（每批最多 5 个）
+**在同一个 assistant message 中**，对当前批次的每个 task 调用 `subagent` tool：
 
-**绝对不要一次性启动超过 5 个 background subagent。** 按以下流程：
+```
+subagent({
+  description: "Analyze {task.module}",
+  run_in_background: true,    ← 必须 true
+  prompt: <见下方模板>
+})
+```
 
-1. 将所有任务分成若干批，每批 ≤ 5 个
-2. 在同一个 assistant message 中启动当前批次的所有 subagent（`run_in_background: true`）
-3. 等待当前批次全部完成（runtime 自动通知）
-4. 确认当前批次的 outputFile 都已生成
-5. 启动下一批，重复直到所有任务完成
+然后**等待 runtime 通知所有 subagent 完成**，确认 outputFile 都已生成，再启动下一批。
 
 #### 3.3 Subagent prompt 模板
 
+将 `task.prompt` 的内容直接嵌入以下模板：
+
 ```
-你是 Vue 3 + TypeScript 代码分析专家。请阅读以下源码文件，分析指定按钮最终调用的后端 API 接口。
+你是 Vue 3 + TypeScript 代码分析专家。
 
-{task.prompt 的内容}
+{task.prompt 的完整内容}
 
-请将分析结果写入文件 {project-root}/{task.outputFile}，格式为：
+请将分析结果用 write tool 写入文件：{project-root}/{task.outputFile}
+
+输出格式（严格 JSON）：
 {
   "results": [
     {
-      "authId": "去掉引号的权限标识字符串",
-      "label": "按钮显示文本",
-      "apis": [{"method": "GET|POST|PUT|DELETE|NAVIGATE", "url": "/api/path", "apiFunction": "函数名", "note": "可选"}],
+      "authId": "去掉引号的权限标识",
+      "label": "按钮文本",
+      "apis": [{"method": "GET|POST|PUT|DELETE|NAVIGATE", "url": "/path", "apiFunction": "fn", "note": ""}],
       "confidence": "high|medium|low",
-      "reasoning": "简要追踪路径"
+      "reasoning": "追踪路径"
     }
   ],
   "module": "{task.module}"
 }
 
-重要：
-- 直接用 write tool 写入文件，不要在对话中重复输出完整 JSON
-- 每个按钮对应 results 数组中的一个元素
-- 如果按钮只是打开弹窗展示数据、不涉及 API 调用，apis 返回空数组 []
-- 如果遇到 429 错误，等待 5 秒后重试，最多重试 3 次
+注意：
+- 用 write tool 直接写文件，不要在对话中输出完整 JSON
+- 纯 UI 按钮（弹窗展示、无 API 调用）apis 返回 []
+- 遇到 429 错误等 5 秒重试，最多 3 次
 ```
 
-### Step 4: 合并 AI 结果
+### Step 4: 合并结果
 
-所有 subagent 完成后：
+**所有批次完成后**，运行一次合并：
 
 ```bash
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
 ```
 
-### Step 5: 汇报结果
+这会读取 `dist/ai-results/*.json` 的所有文件并合并。**不要自己写合并逻辑。**
 
-读取 `dist/auth-mapping-merged.json`，向用户展示：
-1. 总体覆盖率统计
-2. 每个页面的按钮-权限-API 映射表
-3. 低置信度或失败的条目（需要人工确认）
-4. 建议：哪些权限标识缺少对应 API、哪些 API 没有被任何按钮触发
+### Step 5: 汇报
+
+读取 `dist/auth-mapping-merged.json`，展示：
+1. 覆盖率统计
+2. 每页按钮-权限-API 映射表
+3. 低置信度/失败条目
+4. 建议
 
 ## 配置
-
-检查目标项目的以下配置是否匹配默认值，不匹配则修改 `scripts/vue-auth-api-analyzer.mjs` 顶部的 CONFIG 或通过 GUI 设置面板配置：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `viewsDir` | `src/views` | Vue 页面目录 |
-| `i18nFile` | `src/lang/package/zh-cn.ts` | i18n 翻译文件，设为 `null` 跳过 |
-| `excludePatterns` | `["**/components/**", "**/login/**", "**/profile/**"]` | 排除的目录 |
-
-**权限指令名**：默认识别 `v-auth`。如果项目使用其他指令（如 `v-permission`），在脚本中搜索 `prop.name === "auth"` 替换。
-
-**API 封装函数**：默认追踪 `request()` 调用。如果使用其他封装，修改 `resolveApiCall` 中的判断逻辑。
+| `i18nFile` | `src/lang/package/zh-cn.ts` | i18n 文件，`null` 跳过 |
+| `excludePatterns` | `["**/components/**", ...]` | 排除目录 |
 
 ## 输出文件
 
 | 文件 | 用途 |
 |------|------|
-| `dist/auth-mapping-merged.json` | **主报告**：合并后的完整映射 |
-| `dist/auth-mapping.json` | 静态分析原始结果 |
+| `dist/auth-mapping-merged.json` | **主报告** |
+| `dist/auth-mapping.json` | 静态分析结果 |
 | `dist/auth-mapping-ai.json` | AI 补全结果 |
-| `dist/ai-tasks.json` | AI 任务文件（按模块分组的 prompt） |
-| `dist/ai-results/*.json` | 各模块的 AI 分析结果 |
-| `dist/.ai-auth-cache.json` | AI 增量缓存 |
+| `dist/ai-tasks.json` | AI 任务（按模块分组） |
+| `dist/ai-results/*.json` | 各模块 AI 结果 |
+| `dist/.ai-auth-cache.json` | 增量缓存 |
 
-## 适配其他项目
+## 适配
 
-### 使用 v-permission 而非 v-auth
-在脚本中搜索 `prop.name === "auth"`，替换为 `prop.name === "permission"`。
-
-### 使用 axios 直接调用而非 request()
-修改 `resolveApiCall` 函数，增加对 `axios.get/post/put/delete` 的识别。
-
-### 没有 i18n
-设置 `CONFIG.i18nFile = null`。
+- **v-permission**: 搜索 `prop.name === "auth"` 替换为 `"permission"`
+- **非 request()**: 修改 `resolveApiCall` 识别你的封装函数
+- **无 i18n**: `CONFIG.i18nFile = null`

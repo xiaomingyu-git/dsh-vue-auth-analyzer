@@ -2732,7 +2732,13 @@ async function prepareAITasks() {
   console.log("   待分析模块: " + tasks.length + " 个");
   console.log("   缓存命中模块: " + cachedModules + " 个");
   console.log("\n💡 请使用 agent 读取 " + tasksFile + " 并用 subagent 并发处理每个任务");
-  emit({ type: "tasks-ready", file: tasksFile, pending: tasks.length, cached: cachedModules });
+  // Build batch plan (max 5 per batch)
+  const BATCH_SIZE = 5;
+  const batches = [];
+  for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
+    batches.push(tasks.slice(i, i + BATCH_SIZE).map(t => ({ module: t.module, buttons: t.buttons.length, outputFile: t.outputFile })));
+  }
+  emit({ type: "tasks-ready", file: tasksFile, pending: tasks.length, cached: cachedModules, batchSize: BATCH_SIZE, totalBatches: batches.length, batches });
 }
 
 // ─── 合并 AI 结果（subagent 写入的分散结果）────────────────
