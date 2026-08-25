@@ -2845,15 +2845,16 @@ function loadAICredentials() {
     if (fs.existsSync(credPath)) {
       try {
         const content = fs.readFileSync(credPath, "utf-8");
-        const deepseekMatch = content.match(/DEEPSEEK_API_KEY:\s*(.+)/);
-        if (deepseekMatch) apiKey = deepseekMatch[1].trim();
+        // Prefer Qwen (DSH platform default) over DeepSeek
+        const qwenMatch = content.match(/QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/);
+        if (qwenMatch) {
+          apiKey = qwenMatch[1].trim();
+          baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+          model = "qwen-plus";
+        }
         if (!apiKey) {
-          const qwenMatch = content.match(/QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/);
-          if (qwenMatch) {
-            apiKey = qwenMatch[1].trim();
-            baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-            model = "qwen-plus";
-          }
+          const deepseekMatch = content.match(/DEEPSEEK_API_KEY:\s*(.+)/);
+          if (deepseekMatch) apiKey = deepseekMatch[1].trim();
         }
       } catch {}
     }
@@ -2880,7 +2881,7 @@ async function callLLM(config, messages, maxRetries = 3) {
         }),
         signal: AbortSignal.timeout(120000),
       });
-      if (res.status === 429) {
+      if (res.status === 429 || res.status === 402) {
         const wait = 5000 * (attempt + 1);
         console.log("  ⏳ 429 rate limited, waiting " + (wait / 1000) + "s...");
         await new Promise(r => setTimeout(r, wait));
