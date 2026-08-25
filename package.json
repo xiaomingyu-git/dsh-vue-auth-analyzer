@@ -1,6 +1,6 @@
 {
   "name": "dsh-vue-auth-analyzer",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Vue 3 按钮-权限-API 映射分析器：静态 AST 分析 + AI 补全，一键生成权限与接口的完整映射。支持 v-auth/v-permission 等指令、request/axios/http 等封装、router.push/window.open 导航识别。 · Vue 3 button-permission-API mapping analyzer: static AST analysis + AI completion, generating complete permission-to-API mappings.",
   "type": "module",
   "main": "index.js",
