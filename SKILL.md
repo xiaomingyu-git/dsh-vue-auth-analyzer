@@ -26,7 +26,11 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --stati
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepare-ai --ndjson
 ```
 
-读取 `dist/ai-tasks.json`，检查 `pendingModules`：
+输出目录 `dist/ai-tasks/`，包含：
+- `index.json` — **小文件**，只有任务元数据（模块名、按钮数、文件路径），不含源码
+- `<module>.json` — 每个模块一个文件，包含完整的 prompt（含源码）
+
+读取 `dist/ai-tasks/index.json`，检查 `pendingModules`：
 - **0** → 跳到 Step 5
 - **> 0** → 继续 Step 3
 
@@ -37,40 +41,44 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 - **每批最多 2 个 subagent**，绝不超过
 - **等当前批次全部完成后再启动下一批**
 - **不要自己写合并脚本**，用 `--merge-ai` 命令
+- **不要一次性读取所有模块文件**，按需逐个读取
 
-#### 3.1 读取任务列表
+#### 3.1 读取任务索引
 
-读取 `dist/ai-tasks.json` 中的 `tasks` 数组。如果任务数 > 2，分成多批：
+读取 `dist/ai-tasks/index.json`（很小，只有元数据）。按 `tasks` 数组顺序分批：
 
 ```
 批次 1: tasks[0..1]   (最多2个)
 批次 2: tasks[2..3]   (最多2个)
-批次 3: tasks[4..5]   (最多2个)
-...依此类推
+...
 ```
 
 #### 3.2 对每一批执行
 
-**在同一个 assistant message 中**，对当前批次的每个 task 调用 `subagent` tool：
+对当前批次的每个 task：
+1. **读取** `task.taskFile`（如 `dist/ai-tasks/menu.json`）获取 prompt
+2. 用 prompt 内容启动 subagent
+
+**在同一个 assistant message 中**启动当前批次的所有 subagent：
 
 ```
 subagent({
   description: "Analyze {task.module}",
-  run_in_background: true,    ← 必须 true
-  prompt: <见下方模板>
+  run_in_background: true,
+  prompt: <从 taskFile 读取的 prompt + 输出指令>
 })
 ```
 
-然后**等待 runtime 通知所有 subagent 完成**，确认 outputFile 都已生成，再启动下一批。
+然后**等待 runtime 通知所有 subagent 完成**，再启动下一批。
 
 #### 3.3 Subagent prompt 模板
 
-将 `task.prompt` 的内容直接嵌入以下模板：
+从 taskFile 读取 `prompt` 字段后，拼接输出指令：
 
 ```
 你是 Vue 3 + TypeScript 代码分析专家。
 
-{task.prompt 的完整内容}
+{taskFile 中 prompt 字段的完整内容}
 
 请将分析结果用 write tool 写入文件：{project-root}/{task.outputFile}
 
@@ -127,7 +135,8 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge
 | `dist/auth-mapping-merged.json` | **主报告** |
 | `dist/auth-mapping.json` | 静态分析结果 |
 | `dist/auth-mapping-ai.json` | AI 补全结果 |
-| `dist/ai-tasks.json` | AI 任务（按模块分组） |
+| `dist/ai-tasks/index.json` | AI 任务索引（小文件，无源码） |
+| `dist/ai-tasks/<module>.json` | 每模块任务文件（含 prompt + 源码） |
 | `dist/ai-results/*.json` | 各模块 AI 结果 |
 | `dist/.ai-auth-cache.json` | 增量缓存 |
 

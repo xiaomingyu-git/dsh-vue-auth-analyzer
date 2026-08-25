@@ -2716,29 +2716,57 @@ async function prepareAITasks() {
     emit({ type: "ai-progress", current: tasks.length + cachedModules, total: moduleCount, page: moduleName, status: "pending", buttons: buttons.length });
   }
 
-  // Write tasks file
-  const tasksFile = path.join(OUTPUT_DIR, "ai-tasks.json");
-  const tasksOutput = {
+  // Write per-module task files (avoids one huge JSON that breaks agent parsing)
+  const tasksDir = path.join(OUTPUT_DIR, "ai-tasks");
+  fs.mkdirSync(tasksDir, { recursive: true });
+
+  const indexEntries = [];
+  for (const task of tasks) {
+    const taskFile = path.join(tasksDir, task.id + ".json");
+    fs.writeFileSync(taskFile, JSON.stringify({
+      module: task.module,
+      buttons: task.buttons,
+      prompt: task.prompt,
+      outputFile: task.outputFile,
+    }, null, 2), "utf-8");
+    indexEntries.push({
+      id: task.id,
+      module: task.module,
+      buttons: task.buttons.length,
+      taskFile: "dist/ai-tasks/" + task.id + ".json",
+      outputFile: task.outputFile,
+    });
+  }
+
+  // Write small index file (no prompts, just metadata)
+  const indexFile = path.join(tasksDir, "index.json");
+  const indexOutput = {
     generatedAt: new Date().toISOString(),
     totalButtons: unmatchedCount,
     totalModules: moduleCount,
     cachedModules,
     pendingModules: tasks.length,
-    tasks,
+    tasks: indexEntries,
   };
-  fs.writeFileSync(tasksFile, JSON.stringify(tasksOutput, null, 2), "utf-8");
+  fs.writeFileSync(indexFile, JSON.stringify(indexOutput, null, 2), "utf-8");
 
-  console.log("\n📋 AI 任务文件: " + path.relative(ROOT, tasksFile));
-  console.log("   待分析模块: " + tasks.length + " 个");
+  // Also write legacy ai-tasks.json for backward compatibility (without prompts)
+  const legacyFile = path.join(OUTPUT_DIR, "ai-tasks.json");
+  fs.writeFileSync(legacyFile, JSON.stringify(indexOutput, null, 2), "utf-8");
+
+  console.log("\n📋 AI 任务目录: " + path.relative(ROOT, tasksDir));
+  console.log("   索引文件: " + path.relative(ROOT, indexFile));
+  console.log("   待分析模块: " + tasks.length + " 个（每模块一个文件）");
   console.log("   缓存命中模块: " + cachedModules + " 个");
-  console.log("\n💡 请使用 agent 读取 " + tasksFile + " 并用 subagent 并发处理每个任务");
-  // Build batch plan (max 5 per batch)
+  console.log("\n💡 请读取 " + path.relative(ROOT, indexFile) + " 获取任务列表，逐个读取模块文件获取 prompt");
+
+  // Build batch plan
   const BATCH_SIZE = 2;
   const batches = [];
-  for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
-    batches.push(tasks.slice(i, i + BATCH_SIZE).map(t => ({ module: t.module, buttons: t.buttons.length, outputFile: t.outputFile })));
+  for (let i = 0; i < indexEntries.length; i += BATCH_SIZE) {
+    batches.push(indexEntries.slice(i, i + BATCH_SIZE).map(t => ({ module: t.module, buttons: t.buttons, taskFile: t.taskFile, outputFile: t.outputFile })));
   }
-  emit({ type: "tasks-ready", file: tasksFile, pending: tasks.length, cached: cachedModules, batchSize: BATCH_SIZE, totalBatches: batches.length, batches });
+  emit({ type: "tasks-ready", indexFile, pending: tasks.length, cached: cachedModules, batchSize: BATCH_SIZE, totalBatches: batches.length, batches });
 }
 
 // ─── 合并 AI 结果（subagent 写入的分散结果）────────────────
