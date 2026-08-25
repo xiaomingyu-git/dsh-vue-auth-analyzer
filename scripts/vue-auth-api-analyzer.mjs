@@ -2780,7 +2780,22 @@ function mergeAIResults() {
   const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
   const resultsDir = path.join(OUTPUT_DIR, "ai-results");
   const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
+  const tasksFile = path.join(OUTPUT_DIR, "ai-tasks.json");
   const cache = loadCache(cacheFile);
+
+  // Load tasks to map authId → original authValue + page
+  const authIdToOriginal = new Map();
+  if (fs.existsSync(tasksFile)) {
+    try {
+      const tasksData = JSON.parse(fs.readFileSync(tasksFile, "utf-8"));
+      (tasksData.tasks || []).forEach(task => {
+        (task.buttons || []).forEach(b => {
+          const cleanId = (b.authValue || "").replace(/['"]/g, "");
+          authIdToOriginal.set(cleanId, { page: task.module, authValue: b.authValue });
+        });
+      });
+    } catch {}
+  }
 
   if (!fs.existsSync(resultsDir)) {
     console.error("❌ 未找到 dist/ai-results/ 目录");
@@ -2799,12 +2814,23 @@ function mergeAIResults() {
   for (const file of resultFiles) {
     try {
       const data = JSON.parse(fs.readFileSync(path.join(resultsDir, file), "utf-8"));
+      const moduleName = data.module || file.replace(/\.json$/, "");
       const results = Array.isArray(data) ? data : (data.results || []);
       results.forEach(r => {
+        // Enrich with original page + authValue from tasks
+        const original = authIdToOriginal.get(r.authId);
+        if (original) {
+          r.page = original.page;
+          r.authValue = original.authValue;
+        } else if (!r.page) {
+          r.page = moduleName;
+        }
         allResults.push(r);
-        // Update cache
+        // Update cache with correct key format (page|'authValue')
         if (r.authId) {
-          const cacheKey = (r.page || "") + "|" + (r.authId.startsWith("'") || r.authId.startsWith('"') ? r.authId : "'" + r.authId + "'");
+          const page = r.page || moduleName;
+          const authVal = r.authValue || ("'" + r.authId + "'");
+          const cacheKey = page + "|" + authVal;
           cache[cacheKey] = { apis: r.apis || [], confidence: r.confidence || "medium", reasoning: r.reasoning || "" };
         }
       });
