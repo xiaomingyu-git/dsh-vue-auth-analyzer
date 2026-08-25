@@ -20,7 +20,7 @@ description: Use when the user asks to analyze button permissions, scan page API
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --static-only --ndjson
 ```
 
-输出 `dist/auth-mapping.json`。**只产出静态结果，不做合并。**
+输出 `.auth-analyzer/auth-mapping.json`。**只产出静态结果，不做合并。**
 
 ### Step 2: 准备 AI 任务
 
@@ -29,13 +29,13 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 # 如需清除缓存重新生成任务：加 --no-cache
 ```
 
-输出目录 `dist/ai-tasks/`，包含：
+输出目录 `.auth-analyzer/ai-tasks/`，包含：
 - `index.json` — **小文件**，只有任务元数据（模块名、按钮数、绝对路径），不含源码
 - `<module>.json` — 每个模块一个文件，包含完整 prompt（含源码）和 outputFile 绝对路径
 
 **只产出任务文件，不做合并。**
 
-读取 `dist/ai-tasks/index.json`，检查 `pendingModules`：
+读取 `.auth-analyzer/ai-tasks/index.json`，检查 `pendingModules`：
 - **0** → 跳到 Step 5
 - **> 0** → 继续 Step 3
 
@@ -50,7 +50,7 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 
 #### 3.1 读取任务索引
 
-读取 `dist/ai-tasks/index.json`（很小，只有元数据）。按 `tasks` 数组顺序分批：
+读取 `.auth-analyzer/ai-tasks/index.json`（很小，只有元数据）。按 `tasks` 数组顺序分批：
 
 ```
 批次 1: tasks[0..1]   (最多2个)
@@ -61,7 +61,7 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 #### 3.2 对每一批执行
 
 对当前批次的每个 task：
-1. **读取** `task.taskFile`（如 `dist/ai-tasks/menu.json`）获取 prompt
+1. **读取** `task.taskFile`（如 `.auth-analyzer/ai-tasks/menu.json`）获取 prompt
 2. 用 prompt 内容启动 subagent
 
 **在同一个 assistant message 中**启动当前批次的所有 subagent：
@@ -116,15 +116,15 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge
 ```
 
 这一步将静态结果 + AI 结果合并为最终报告：
-- 读取 `dist/auth-mapping.json`（Step 1 的静态结果）
-- 读取 `dist/ai-results/*.json`（Step 3 的 AI 结果）
-- 输出 `dist/auth-mapping-ai.json` + `dist/auth-mapping-merged.json`
+- 读取 `.auth-analyzer/auth-mapping.json`（Step 1 的静态结果）
+- 读取 `.auth-analyzer/ai-results/*.json`（Step 3 的 AI 结果）
+- 输出 `.auth-analyzer/auth-mapping-ai.json` + `.auth-analyzer/auth-mapping-merged.json`
 
 **不要自己写合并逻辑。只在所有 subagent 完成后运行一次。**
 
 ### Step 5: 汇报
 
-读取 `dist/auth-mapping-merged.json`，展示：
+读取 `.auth-analyzer/auth-mapping-merged.json`，展示：
 1. 覆盖率统计
 2. 每页按钮-权限-API 映射表
 3. 低置信度/失败条目
@@ -142,14 +142,14 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge
 
 | 文件 | 用途 |
 |------|------|
-| `dist/static/index.json` | 静态分析索引（小文件） |
-| `dist/static/<module>.json` | 每模块静态分析结果 |
-| `dist/auth-mapping-merged.json` | **最终合并报告** |
-| `dist/auth-mapping-ai.json` | AI 补全汇总 |
-| `dist/ai-tasks/index.json` | AI 任务索引（小文件） |
-| `dist/ai-tasks/<module>.json` | 每模块 AI 任务（含 prompt） |
-| `dist/ai-results/<module>.json` | 每模块 AI 结果 |
-| `dist/.ai-auth-cache.json` | 增量缓存 |
+| `.auth-analyzer/static/index.json` | 静态分析索引（小文件） |
+| `.auth-analyzer/static/<module>.json` | 每模块静态分析结果 |
+| `.auth-analyzer/auth-mapping-merged.json` | **最终合并报告** |
+| `.auth-analyzer/auth-mapping-ai.json` | AI 补全汇总 |
+| `.auth-analyzer/ai-tasks/index.json` | AI 任务索引（小文件） |
+| `.auth-analyzer/ai-tasks/<module>.json` | 每模块 AI 任务（含 prompt） |
+| `.auth-analyzer/ai-results/<module>.json` | 每模块 AI 结果 |
+| `.auth-analyzer/.ai-auth-cache.json` | 增量缓存 |
 
 ## 适配
 

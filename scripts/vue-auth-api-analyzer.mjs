@@ -42,7 +42,7 @@ const CONFIG = {
   excludePatterns: ["**/components/**", "**/login/**", "**/profile/**"],
   authDirectiveName: "auth",  // Change to "permission", "has", etc.
   i18nFile: "src/lang/package/zh-cn.ts",  // Set to your i18n file path
-  outputDir: "dist",
+  outputDir: ".auth-analyzer",
   ai: {
     enabled: true,
     maxFileSize: 120000,  // Max total file content size per module batch (bytes)
@@ -92,21 +92,21 @@ Options:
   -h, --help       Show this help
 
 Workflow:
-  1. --static-only      → dist/auth-mapping.json
-  2. --prepare-ai       → dist/ai-tasks/index.json + per-module files
-  3. (subagents write)  → dist/ai-results/<module>.json
-  4. --merge-ai         → dist/auth-mapping-ai.json + merged report
+  1. --static-only      → .auth-analyzer/auth-mapping.json
+  2. --prepare-ai       → .auth-analyzer/ai-tasks/ (index + per-module)
+  3. (subagents write)  → .auth-analyzer/ai-results/<module>.json
+  4. --merge-ai         → .auth-analyzer/auth-mapping-merged.json
 
-Output:
-  dist/static/index.json          Static analysis index (small)
-  dist/static/<module>.json       Per-module static results
-  dist/auth-mapping.json          Legacy monolith (backward compat)
-  dist/ai-tasks/index.json        AI task index (small)
-  dist/ai-tasks/<module>.json     Per-module AI task files
-  dist/ai-results/<module>.json   Per-module AI results
-  dist/auth-mapping-ai.json       AI completion summary
-  dist/auth-mapping-merged.json   Final merged report
-  dist/.ai-auth-cache.json        Incremental AI cache
+Output (default directory: .auth-analyzer/):
+  static/index.json          Static analysis index (small)
+  static/<module>.json       Per-module static results
+  auth-mapping.json          Legacy monolith (backward compat)
+  ai-tasks/index.json        AI task index (small)
+  ai-tasks/<module>.json     Per-module AI task files
+  ai-results/<module>.json   Per-module AI results
+  auth-mapping-ai.json       AI completion summary
+  auth-mapping-merged.json   Final merged report
+  .ai-auth-cache.json        Incremental AI cache
 `);
 }
 
@@ -1761,7 +1761,7 @@ async function runStaticAnalysis(ROOT, SRC_DIR, OUTPUT_DIR) {
 
   console.log(`[analyze-auth-apis] 页面数量：${results.length}`);
   console.log(`  索引: ${path.relative(ROOT, indexFile)}`);
-  console.log(`  模块文件: dist/static/<module>.json (${results.length} 个)`);
+  console.log(`  模块文件: ${path.relative(ROOT, staticDir)}/<module>.json (${results.length} 个)`);
   return results;
 }
 
