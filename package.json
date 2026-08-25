@@ -15,6 +15,7 @@
     "client",
     "cordis.patch.yml",
     "SKILL.md",
+    "README.md",
     "scripts/vue-auth-api-analyzer.mjs",
     "LICENSE"
   ],
