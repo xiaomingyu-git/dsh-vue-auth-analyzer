@@ -75,6 +75,16 @@ function syncConfigToFile(settings) {
 // ─── Active run state (for cancel/status) ───────────────
 let activeRun = null // { child, abortController }
 
+// ─── Live progress state (for overlay) ──────────────────
+let liveProgress = {
+  running: false,
+  phase: "",
+  current: 0,
+  total: 0,
+  logs: [],       // last N log lines
+  stats: null,
+}
+
 // ─── Plugin entry ───────────────────────────────────────
 export function apply(ctx) {
   // Register skill with hot-reload: re-reads SKILL.md on file change
@@ -195,12 +205,29 @@ export function apply(ctx) {
 
         activeRun = { child }
 
+        // Reset progress state
+        liveProgress = { running: true, phase: '', current: 0, total: 0, logs: [], stats: null }
+
         child.stdout.on('data', (chunk) => {
           response.write(chunk)
+          // Parse NDJSON events to update live progress
+          const text = chunk.toString()
+          for (const line of text.split('\n')) {
+            if (!line.trim()) continue
+            try {
+              const evt = JSON.parse(line)
+              if (evt.type === 'phase') liveProgress.phase = evt.label
+              if (evt.type === 'ai-start') { liveProgress.total = evt.total; liveProgress.current = 0 }
+              if (evt.type === 'ai-progress') { liveProgress.current = evt.current; liveProgress.total = evt.total }
+              if (evt.type === 'ai-done') liveProgress.stats = evt.stats
+              // Keep last 50 log entries
+              liveProgress.logs.push(evt)
+              if (liveProgress.logs.length > 50) liveProgress.logs.shift()
+            } catch {}
+          }
         })
 
         child.stderr.on('data', (chunk) => {
-          // Forward stderr as error events
           const lines = chunk.toString().split('\n').filter(l => l.trim())
           for (const line of lines) {
             response.write(JSON.stringify({ type: 'stderr', message: line }) + '\n')
@@ -209,6 +236,7 @@ export function apply(ctx) {
 
         child.on('close', (code) => {
           activeRun = null
+          liveProgress.running = false
           response.write(JSON.stringify({ type: 'exit', code }) + '\n')
           response.end()
         })
@@ -304,6 +332,19 @@ export function apply(ctx) {
       handler: (request, response) => {
         response.writeHead(200, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ running: activeRun !== null }))
+      },
+    })
+
+    // GET /dsh-vue-auth-analyzer/progress — live progress for overlay
+    host.register({
+      kind: 'exact',
+      path: '/dsh-vue-auth-analyzer/progress',
+      handler: (request, response) => {
+        response.writeHead(200, {
+          'content-type': 'application/json',
+          'cache-control': 'no-store',
+        })
+        response.end(JSON.stringify(liveProgress))
       },
     })
   })

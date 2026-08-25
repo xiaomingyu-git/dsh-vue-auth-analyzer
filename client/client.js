@@ -56,6 +56,26 @@ window.__ModuleLoader__.load({
       ".ava-summary-item{display:inline-flex;align-items:center;gap:4px}",
       ".ava-spin{display:inline-block;width:14px;height:14px;border:2px solid var(--dsw-alias-border-l2,#e5e7eb);border-top-color:var(--dsw-alias-brand-primary,#4f6ef7);border-radius:50%;animation:ava-spin .6s linear infinite}",
       "@keyframes ava-spin{to{transform:rotate(360deg)}}",
+      /* Progress Overlay */
+      ".ava-overlay{position:fixed;bottom:16px;right:16px;z-index:9999;font-family:-apple-system,BlinkMacSystemFont,sans-serif;pointer-events:auto}",
+      ".ava-overlay-bar{background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,#e5e7eb);border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.12);overflow:hidden;transition:all .3s ease;cursor:pointer;min-width:280px;max-width:380px}",
+      ".ava-overlay-bar:hover{border-color:var(--dsw-alias-brand-primary,#4f6ef7);box-shadow:0 4px 24px rgba(79,110,247,.2)}",
+      ".ava-overlay-head{display:flex;align-items:center;gap:10px;padding:10px 14px}",
+      ".ava-overlay-icon{font-size:18px;flex-shrink:0}",
+      ".ava-overlay-info{flex:1;min-width:0}",
+      ".ava-overlay-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary,#1f2328);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      ".ava-overlay-sub{font-size:11px;color:var(--dsw-alias-label-tertiary,#8b93a1);margin-top:2px}",
+      ".ava-overlay-pct{font-size:13px;font-weight:700;color:var(--dsw-alias-brand-primary,#4f6ef7);flex-shrink:0;font-variant-numeric:tabular-nums}",
+      ".ava-overlay-progress{height:3px;background:var(--dsw-alias-border-l1,#e5e7eb)}",
+      ".ava-overlay-fill{height:100%;background:var(--dsw-alias-brand-primary,#4f6ef7);transition:width .5s ease;border-radius:0 2px 2px 0}",
+      ".ava-overlay-expand{max-height:320px;display:flex;flex-direction:column}",
+      ".ava-overlay-log{flex:1;overflow-y:auto;max-height:240px;padding:0}",
+      ".ava-overlay-log-line{display:flex;align-items:center;gap:6px;padding:4px 14px;font-size:11px;line-height:16px;border-bottom:1px solid var(--dsw-alias-border-l2,#f0f1f3)}",
+      ".ava-overlay-log-line:last-child{border-bottom:none}",
+      ".ava-overlay-chevron{color:var(--dsw-alias-label-tertiary,#8b93a1);transition:transform .2s;font-size:12px;flex-shrink:0}",
+      ".ava-overlay-chevron.open{transform:rotate(180deg)}",
+      ".ava-overlay-done .ava-overlay-fill{background:var(--dsw-alias-state-success-primary,#16a34a)}",
+      ".ava-overlay-stats{padding:8px 14px;font-size:11px;color:var(--dsw-alias-label-secondary,#6b7280);border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);display:flex;gap:10px;flex-wrap:wrap}",
       ".ava-hint-banner{padding:10px 14px;font-size:12px;line-height:18px;background:var(--dsw-alias-bg-layer-2,#fffbe6);border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);color:var(--dsw-alias-label-primary,#1f2328);display:flex;align-items:center;gap:8px}",
       ".ava-hint-icon{font-size:16px;flex-shrink:0}",
     ].join("\n");
@@ -424,7 +444,89 @@ window.__ModuleLoader__.load({
 
     // ─── Plugin entry ───────────────────────────────────────
     var name = "dsh-vue-auth-analyzer";
-    var inject = ["slots", "locale"];
+    var inject = ["slots", "locale", "settingsScope"];
+
+    // ─── Progress Overlay Component ────────────────────────
+    function ProgressOverlay() {
+      var h = react.createElement;
+      var _s1 = react.useState(null), progress = _s1[0], setProgress = _s1[1];
+      var _s2 = react.useState(false), expanded = _s2[0], setExpanded = _s2[1];
+      var logRef = react.useRef(null);
+
+      react.useEffect(function() {
+        var timer = setInterval(async function() {
+          try {
+            var res = await fetch("/dsh-vue-auth-analyzer/progress");
+            if (res.ok) {
+              var data = await res.json();
+              setProgress(data);
+              if (!data.running && !data.stats) setProgress(null);
+            }
+          } catch {}
+        }, 1000);
+        return function() { clearInterval(timer); };
+      }, []);
+
+      // Auto-scroll log
+      react.useEffect(function() {
+        if (expanded && logRef.current) {
+          logRef.current.scrollTop = logRef.current.scrollHeight;
+        }
+      }, [progress && progress.logs ? progress.logs.length : 0, expanded]);
+
+      if (!progress || (!progress.running && !progress.stats)) return null;
+
+      var pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+      var isDone = !progress.running && progress.stats;
+      var icon = isDone ? "✅" : progress.running ? "🔄" : "⏸";
+      var title = isDone ? "分析完成" : (progress.phase || "分析中...");
+      var sub = progress.total > 0 ? progress.current + " / " + progress.total + " 模块" : "";
+
+      var statusIcon = function(s) {
+        if (s === "done") return "✅";
+        if (s === "cache-hit") return "⏭";
+        if (s === "failed") return "❌";
+        if (s === "analyzing") return "🔄";
+        return "⏳";
+      };
+
+      return h("div", { className: "ava-overlay" },
+        h("div", {
+          className: "ava-overlay-bar" + (isDone ? " ava-overlay-done" : "") + (expanded ? " ava-overlay-expand" : ""),
+          onClick: function() { setExpanded(!expanded); }
+        },
+          h("div", { className: "ava-overlay-head" },
+            h("span", { className: "ava-overlay-icon" }, icon),
+            h("div", { className: "ava-overlay-info" },
+              h("div", { className: "ava-overlay-title" }, title),
+              sub ? h("div", { className: "ava-overlay-sub" }, sub) : null
+            ),
+            progress.total > 0 ? h("span", { className: "ava-overlay-pct" }, pct + "%") : null,
+            h("span", { className: "ava-overlay-chevron" + (expanded ? " open" : "") }, "▼")
+          ),
+          h("div", { className: "ava-overlay-progress" },
+            h("div", { className: "ava-overlay-fill", style: { width: pct + "%" } })
+          ),
+          expanded ? h("div", { className: "ava-overlay-log", ref: logRef },
+            (progress.logs || []).map(function(log, i) {
+              if (log.type === "phase") return h("div", { key: i, className: "ava-overlay-log-line", style: { fontWeight: 600, color: "var(--dsw-alias-brand-primary)" } }, "▸ " + log.label);
+              if (log.type === "ai-progress") return h("div", { key: i, className: "ava-overlay-log-line" }, statusIcon(log.status) + " " + (log.page || "") + (log.buttons ? " (" + log.buttons + ")" : ""));
+              if (log.type === "ai-done" && log.stats) return h("div", { key: i, className: "ava-overlay-stats" },
+                h("span", null, "🟢 " + log.stats.highConfidence),
+                h("span", null, "🟡 " + log.stats.mediumConfidence),
+                h("span", null, "❌ " + log.stats.failed)
+              );
+              return null;
+            })
+          ) : null,
+          isDone && progress.stats ? h("div", { className: "ava-overlay-stats" },
+            h("span", null, "🟢 " + progress.stats.highConfidence + " 高"),
+            h("span", null, "🟡 " + progress.stats.mediumConfidence + " 中"),
+            h("span", null, "❌ " + progress.stats.failed + " 失败")
+          ) : null
+        )
+      );
+    }
 
     function apply(ctx) {
       ctx.locale.register(NS, { zh: zh, en: en });
@@ -436,6 +538,16 @@ window.__ModuleLoader__.load({
             inject: function() { return { t: t }; },
           }, function() { return react.createElement(AnalyzerCard, { t: t }); });
         });
+      });
+
+      // Register progress overlay (floats above entire app)
+      ctx.slots.inject("shell.overlay", function() {
+        return ctx.slots.register({
+          name: "shell.overlay",
+          id: "auth-analyzer-progress",
+          order: 100,
+          label: "Auth Analyzer Progress"
+        }, function() { return react.createElement(ProgressOverlay, null); });
       });
     }
 
