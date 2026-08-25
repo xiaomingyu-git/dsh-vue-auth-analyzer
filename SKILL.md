@@ -38,7 +38,13 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --run-a
 
 ### Step 2: 汇报
 
-读取 `.auth-analyzer/auth-mapping-merged.json`，向用户展示：
+**用 bash 读取报告**（不要用 read tool，它会加行号导致 JSON 解析失败）：
+
+```bash
+node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log(JSON.stringify(d.stats, null, 2)); d.pages.forEach(p => { console.log('\n## ' + p.page); p.buttons.forEach(b => { const apis = b.apis.map(a => a.method + ' ' + a.url).join(', ') || '(纯UI)'; console.log('  ' + b.authId + ' → ' + apis + ' [' + b.source + '/' + b.confidence + ']'); }); })"
+```
+
+向用户展示：
 1. 覆盖率统计
 2. 每页按钮-权限-API 映射表（包含 HTTP method + URL）
 3. 低置信度/失败条目
