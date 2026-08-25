@@ -142,12 +142,13 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge
 
 | 文件 | 用途 |
 |------|------|
-| `dist/auth-mapping-merged.json` | **主报告** |
-| `dist/auth-mapping.json` | 静态分析结果 |
-| `dist/auth-mapping-ai.json` | AI 补全结果 |
-| `dist/ai-tasks/index.json` | AI 任务索引（小文件，无源码） |
-| `dist/ai-tasks/<module>.json` | 每模块任务文件（含 prompt + 源码） |
-| `dist/ai-results/*.json` | 各模块 AI 结果 |
+| `dist/static/index.json` | 静态分析索引（小文件） |
+| `dist/static/<module>.json` | 每模块静态分析结果 |
+| `dist/auth-mapping-merged.json` | **最终合并报告** |
+| `dist/auth-mapping-ai.json` | AI 补全汇总 |
+| `dist/ai-tasks/index.json` | AI 任务索引（小文件） |
+| `dist/ai-tasks/<module>.json` | 每模块 AI 任务（含 prompt） |
+| `dist/ai-results/<module>.json` | 每模块 AI 结果 |
 | `dist/.ai-auth-cache.json` | 增量缓存 |
 
 ## 适配

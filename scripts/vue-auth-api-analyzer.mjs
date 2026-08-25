@@ -98,12 +98,14 @@ Workflow:
   4. --merge-ai         → dist/auth-mapping-ai.json + merged report
 
 Output:
-  dist/auth-mapping.json          Static analysis results
-  dist/auth-mapping-ai.json       AI completion results
-  dist/auth-mapping-merged.json   Final merged report
-  dist/ai-tasks/index.json        AI task index (small, no source code)
-  dist/ai-tasks/<module>.json     Per-module task files (with prompts)
+  dist/static/index.json          Static analysis index (small)
+  dist/static/<module>.json       Per-module static results
+  dist/auth-mapping.json          Legacy monolith (backward compat)
+  dist/ai-tasks/index.json        AI task index (small)
+  dist/ai-tasks/<module>.json     Per-module AI task files
   dist/ai-results/<module>.json   Per-module AI results
+  dist/auth-mapping-ai.json       AI completion summary
+  dist/auth-mapping-merged.json   Final merged report
   dist/.ai-auth-cache.json        Incremental AI cache
 `);
 }
@@ -1714,41 +1716,52 @@ async function runStaticAnalysis(ROOT, SRC_DIR, OUTPUT_DIR) {
     if (pageResult) results.push(pageResult);
   }
 
-  fs.mkdirSync(path.dirname(OUTPUT_FILE), { recursive: true });
+  // Write per-module static files + index (avoids one huge monolith)
+  const staticDir = path.join(OUTPUT_DIR, "static");
+  fs.mkdirSync(staticDir, { recursive: true });
+
+  const indexEntries = [];
+  for (const page of results) {
+    const safeName = (page.page || "root").replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_+|_+$/, "") || "root";
+    const moduleFile = path.join(staticDir, safeName + ".json");
+    fs.writeFileSync(moduleFile, JSON.stringify(page, null, 2), "utf-8");
+
+    const matchedCount = (page.authBindings || []).filter(b => b.apis && b.apis.length > 0).length;
+    const totalCount = (page.authBindings || []).length;
+    indexEntries.push({
+      page: page.page,
+      entry: page.entry,
+      file: path.join("dist", "static", safeName + ".json"),
+      totalButtons: totalCount,
+      matchedButtons: matchedCount,
+      unmatchedButtons: totalCount - matchedCount,
+    });
+  }
+
+  const indexFile = path.join(staticDir, "index.json");
+  const summary = buildSummary(results);
+  fs.writeFileSync(indexFile, JSON.stringify({
+    generatedAt: new Date().toISOString(),
+    totalPages: results.length,
+    ...summary,
+    pages: indexEntries,
+  }, null, 2), "utf-8");
+
+  // Also write legacy auth-mapping.json for backward compatibility
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(results, null, 2), "utf-8");
+
+  // Debug files
   const debugDir = path.join(ROOT, "dist", "auth-debug");
   fs.mkdirSync(debugDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(debugDir, "template.json"),
-    JSON.stringify(templateDebug, null, 2),
-    "utf-8"
-  );
-  fs.writeFileSync(
-    path.join(debugDir, "script.json"),
-    JSON.stringify(scriptDebug, null, 2),
-    "utf-8"
-  );
-  fs.writeFileSync(
-    path.join(debugDir, "composition.json"),
-    JSON.stringify(compositionDebug, null, 2),
-    "utf-8"
-  );
-  fs.writeFileSync(
-    path.join(debugDir, "trace.json"),
-    JSON.stringify(traceDebug, null, 2),
-    "utf-8"
-  );
-  fs.writeFileSync(
-    path.join(debugDir, "summary.json"),
-    JSON.stringify(buildSummary(results), null, 2),
-    "utf-8"
-  );
-  console.log(
-    `[analyze-auth-apis] 页面数量：${results.length}，输出：${path.relative(
-      ROOT,
-      OUTPUT_FILE
-    )}`
-  );
+  fs.writeFileSync(path.join(debugDir, "template.json"), JSON.stringify(templateDebug, null, 2), "utf-8");
+  fs.writeFileSync(path.join(debugDir, "script.json"), JSON.stringify(scriptDebug, null, 2), "utf-8");
+  fs.writeFileSync(path.join(debugDir, "composition.json"), JSON.stringify(compositionDebug, null, 2), "utf-8");
+  fs.writeFileSync(path.join(debugDir, "trace.json"), JSON.stringify(traceDebug, null, 2), "utf-8");
+  fs.writeFileSync(path.join(debugDir, "summary.json"), JSON.stringify(summary, null, 2), "utf-8");
+
+  console.log(`[analyze-auth-apis] 页面数量：${results.length}`);
+  console.log(`  索引: ${path.relative(ROOT, indexFile)}`);
+  console.log(`  模块文件: dist/static/<module>.json (${results.length} 个)`);
   return results;
 }
 
@@ -2628,13 +2641,32 @@ function buildBatchPrompt(moduleName, buttons, fileContents) {
 }
 
 async function prepareAITasks() {
-  const mappingFile = path.join(ROOT, CONFIG.outputDir, "auth-mapping.json");
-  if (!fs.existsSync(mappingFile)) {
-    console.error("❌ 未找到 dist/auth-mapping.json，请先运行静态分析");
-    process.exit(1);
-  }
+  const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
+  const staticIndexFile = path.join(OUTPUT_DIR, "static", "index.json");
+  const mappingFile = path.join(OUTPUT_DIR, "auth-mapping.json");
 
-  const mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
+  // Load static results: prefer per-module files, fall back to monolith
+  let mapping = [];
+  if (fs.existsSync(staticIndexFile)) {
+    try {
+      const index = JSON.parse(fs.readFileSync(staticIndexFile, "utf-8"));
+      for (const entry of (index.pages || [])) {
+        if (entry.unmatchedButtons > 0 && entry.file) {
+          const moduleFile = path.join(ROOT, entry.file);
+          if (fs.existsSync(moduleFile)) {
+            mapping.push(JSON.parse(fs.readFileSync(moduleFile, "utf-8")));
+          }
+        }
+      }
+    } catch {}
+  }
+  if (mapping.length === 0) {
+    if (!fs.existsSync(mappingFile)) {
+      console.error("❌ 未找到静态分析结果，请先运行 --static-only");
+      process.exit(1);
+    }
+    mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
+  }
 
   // Group unmatched buttons by page/module
   const groups = {};
@@ -2671,7 +2703,6 @@ async function prepareAITasks() {
 
   // Build tasks
   const tasks = [];
-  const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
   const resultsDir = path.join(OUTPUT_DIR, "ai-results");
   fs.mkdirSync(resultsDir, { recursive: true });
 
@@ -2784,10 +2815,33 @@ function mergeAIResults() {
   const cache = loadCache(cacheFile);
 
   // Build authId → {page, authValue} mapping from static analysis output.
-  // This is the single source of truth for button→page membership.
+  // Prefer per-module files (dist/static/), fall back to monolith.
   const authIdToOriginal = new Map();
+  const staticIndexFile = path.join(OUTPUT_DIR, "static", "index.json");
   const mappingFile = path.join(OUTPUT_DIR, "auth-mapping.json");
-  if (fs.existsSync(mappingFile)) {
+
+  let loaded = false;
+  if (fs.existsSync(staticIndexFile)) {
+    try {
+      const index = JSON.parse(fs.readFileSync(staticIndexFile, "utf-8"));
+      for (const entry of (index.pages || [])) {
+        if (entry.file) {
+          const moduleFile = path.join(ROOT, entry.file);
+          if (fs.existsSync(moduleFile)) {
+            const page = JSON.parse(fs.readFileSync(moduleFile, "utf-8"));
+            (page.authBindings || []).forEach(b => {
+              const cleanId = (b.authValue || "").replace(/['"]/g, "");
+              if (cleanId && !authIdToOriginal.has(cleanId)) {
+                authIdToOriginal.set(cleanId, { page: page.page, authValue: b.authValue });
+              }
+            });
+          }
+        }
+      }
+      loaded = authIdToOriginal.size > 0;
+    } catch {}
+  }
+  if (!loaded && fs.existsSync(mappingFile)) {
     try {
       const mapping = JSON.parse(fs.readFileSync(mappingFile, "utf-8"));
       (Array.isArray(mapping) ? mapping : []).forEach(page => {
