@@ -2940,14 +2940,14 @@ async function runAICompletion() {
 
   // Process tasks with concurrency limit
   async function processTask(task) {
-    const taskFilePath = path.join(ROOT, task.taskFile);
+    const taskFilePath = path.isAbsolute(task.taskFile) ? task.taskFile : path.join(ROOT, task.taskFile);
     if (!fs.existsSync(taskFilePath)) {
       console.log("⚠️ Task file not found: " + task.taskFile);
       return null;
     }
 
     // Check if result already exists
-    const outputFile = path.join(ROOT, task.outputFile);
+    const outputFile = path.isAbsolute(task.outputFile) ? task.outputFile : path.join(ROOT, task.outputFile);
     if (fs.existsSync(outputFile)) {
       completed++;
       emit({ type: "ai-progress", current: completed, total: totalTasks, page: task.module, status: "cache-hit", buttons: task.buttons });
