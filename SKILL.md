@@ -46,90 +46,20 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 - **0** → 跳到 Step 5
 - **> 0** → 继续 Step 3
 
-### Step 3: 分批 subagent 分析
-
-#### ⚠️ 核心规则
-
-- **每批最多 2 个 subagent**，绝不超过
-- **等当前批次全部完成后再启动下一批**
-- **不要自己写合并脚本**，用 `--merge-ai` 命令
-- **不要一次性读取所有模块文件**，按需逐个读取
-
-#### 3.1 读取任务索引
-
-读取 `.auth-analyzer/ai-tasks/index.json`（很小，只有元数据）。按 `tasks` 数组顺序分批：
-
-```
-批次 1: tasks[0..1]   (最多2个)
-批次 2: tasks[2..3]   (最多2个)
-...
-```
-
-#### 3.2 对每一批执行
-
-对当前批次的每个 task：
-1. **用 bash 读取** `task.taskFile`（绝对路径）获取 prompt。**不要用 read tool 读 JSON**（它会加行号导致解析失败）。正确方式：
-   ```bash
-   node -e "const d=require('{task.taskFile}'); console.log(d.prompt)"
-   ```
-2. 用 prompt 内容启动 subagent
-
-**在同一个 assistant message 中**启动当前批次的所有 subagent：
-
-```
-subagent({
-  description: "Analyze {task.module}",
-  run_in_background: true,
-  prompt: <从 taskFile 读取的 prompt + 输出指令>
-})
-```
-
-然后**等待 runtime 通知所有 subagent 完成**，再启动下一批。
-
-#### 3.3 Subagent prompt 模板
-
-从 taskFile 读取 `prompt` 字段后，拼接输出指令：
-
-```
-你是 Vue 3 + TypeScript 代码分析专家。
-
-{taskFile 中 prompt 字段的完整内容}
-
-请将分析结果用 write tool 写入文件：{task.outputFile}（这是绝对路径，直接使用）
-
-输出格式（严格 JSON）：
-{
-  "results": [
-    {
-      "authId": "去掉引号的权限标识",
-      "label": "按钮文本",
-      "apis": [{"method": "GET|POST|PUT|DELETE|NAVIGATE", "url": "/path", "apiFunction": "fn", "note": ""}],
-      "confidence": "high|medium|low",
-      "reasoning": "追踪路径"
-    }
-  ],
-  "module": "{task.module}"
-}
-
-注意：
-- 用 write tool 直接写文件，不要在对话中输出完整 JSON
-- 纯 UI 按钮（弹窗展示、无 API 调用）apis 返回 []
-- 遇到 429 错误等 5 秒重试，最多 3 次
-```
-
-### Step 4: 合并结果
-
-**所有批次完成后**，运行合并命令。这一步将静态结果 + AI 结果合并为最终报告：
+### Step 3: AI 分析（一条命令搞定）
 
 ```bash
-cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
+cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai --ndjson
 ```
 
-- 读取 `.auth-analyzer/auth-mapping.json`（Step 1 的静态结果）
-- 读取 `.auth-analyzer/ai-results/*.json`（Step 3 的 AI 结果）
-- 输出 `.auth-analyzer/auth-mapping-ai.json` + `.auth-analyzer/auth-mapping-merged.json`
+这条命令会自动完成：准备任务 → 调 LLM 分析 → 写入结果 → 合并报告。
+凭证自动从 `~/.dsh/.credentials.yaml` 读取，无需手动配置。
+已有结果的模块自动跳过，不会浪费 token。
 
-**不要自己写合并逻辑。只在所有 subagent 完成后运行一次。**
+**不要自己读任务文件、不要自己启动 subagent、不要自己写合并脚本。**
+
+### Step 4: 汇报
+
 
 ### Step 5: 汇报
 
