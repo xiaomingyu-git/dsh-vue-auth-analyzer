@@ -62,10 +62,9 @@ function emit(event) {
 // ============================================================
 function parseArgs() {
   const args = process.argv.slice(2);
-  const opts = { staticOnly: false, aiOnly: false, noCache: false, help: false, ndjson: false, prepareAi: false, mergeAi: false };
+  const opts = { staticOnly: false, noCache: false, help: false, ndjson: false, prepareAi: false, mergeAi: false };
   for (const a of args) {
     if (a === "--static-only") opts.staticOnly = true;
-    else if (a === "--ai-only") opts.aiOnly = true;
     else if (a === "--no-cache") opts.noCache = true;
     else if (a === "--ndjson") opts.ndjson = true;
     else if (a === "--prepare-ai") opts.prepareAi = true;
@@ -77,23 +76,33 @@ function parseArgs() {
 
 function printHelp() {
   console.log(`
-Vue Auth-API Analyzer
+Vue Auth-API Analyzer v2
 
 Usage:
   node vue-auth-api-analyzer.mjs [options]
 
 Options:
-  --static-only    Only run static analysis (no AI)
-  --ai-only        Only run AI completion (requires prior static analysis)
-  --no-cache       Clear AI cache and re-analyze all unmatched buttons
+  --static-only    Only run static AST analysis
+  --prepare-ai     Prepare AI tasks (per-module files for subagent processing)
+  --merge-ai       Merge AI results from dist/ai-results/*.json
+  --no-cache       Clear AI cache before preparing tasks
+  --ndjson         Output progress as NDJSON events
   -h, --help       Show this help
+
+Workflow:
+  1. --static-only      → dist/auth-mapping.json
+  2. --prepare-ai       → dist/ai-tasks/index.json + per-module files
+  3. (subagents write)  → dist/ai-results/<module>.json
+  4. --merge-ai         → dist/auth-mapping-ai.json + merged report
 
 Output:
   dist/auth-mapping.json          Static analysis results
   dist/auth-mapping-ai.json       AI completion results
-  dist/auth-mapping-merged.json   Merged final results
-  dist/.ai-auth-cache.json        AI analysis cache
-  dist/auth-debug/                Debug info directory
+  dist/auth-mapping-merged.json   Final merged report
+  dist/ai-tasks/index.json        AI task index (small, no source code)
+  dist/ai-tasks/<module>.json     Per-module task files (with prompts)
+  dist/ai-results/<module>.json   Per-module AI results
+  dist/.ai-auth-cache.json        Incremental AI cache
 `);
 }
 
@@ -2984,7 +2993,8 @@ async function main() {
   let staticData = null;
   let aiData = null;
 
-  if (!opts.aiOnly) {
+  // Phase 1: Static analysis (unless --merge-ai only)
+  if (!opts.mergeAi) {
     emit({ type: "phase", phase: "static", label: "Static Analysis" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 1: Static Analysis");
@@ -2995,12 +3005,10 @@ async function main() {
   } else {
     if (fs.existsSync(STATIC_OUTPUT)) {
       staticData = JSON.parse(fs.readFileSync(STATIC_OUTPUT, "utf-8"));
-    } else {
-      console.error("Error: --ai-only requires prior static analysis.");
-      process.exit(1);
     }
   }
 
+  // Phase 2: AI task preparation or result merging
   if (opts.mergeAi) {
     emit({ type: "phase", phase: "merge-ai", label: "Merge AI Results" });
     console.log("\n" + "=".repeat(60));
@@ -3010,19 +3018,7 @@ async function main() {
     if (fs.existsSync(AI_OUTPUT)) {
       aiData = JSON.parse(fs.readFileSync(AI_OUTPUT, "utf-8"));
     }
-  } else if (opts.prepareAi) {
-    emit({ type: "phase", phase: "prepare-ai", label: "Prepare AI Tasks" });
-    console.log("\n" + "=".repeat(60));
-    console.log("PHASE 2: Prepare AI Tasks");
-    console.log("=".repeat(60));
-    if (opts.noCache) {
-      const cacheFile = path.join(OUTPUT_DIR, ".ai-auth-cache.json");
-      if (fs.existsSync(cacheFile)) fs.unlinkSync(cacheFile);
-      console.log("AI cache cleared.");
-    }
-    await prepareAITasks();
   } else if (!opts.staticOnly && CONFIG.ai.enabled) {
-    // Default: prepare tasks (no longer self-call LLM)
     emit({ type: "phase", phase: "prepare-ai", label: "Prepare AI Tasks" });
     console.log("\n" + "=".repeat(60));
     console.log("PHASE 2: Prepare AI Tasks");
