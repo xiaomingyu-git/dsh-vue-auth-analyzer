@@ -10,8 +10,10 @@
  * 用法：
  *   node vue-auth-api-analyzer.mjs                  # 完整分析（静态 + AI）
  *   node vue-auth-api-analyzer.mjs --static-only     # 仅静态分析
- *   node vue-auth-api-analyzer.mjs --ai-only         # 仅 AI 补全
- *   node vue-auth-api-analyzer.mjs --no-cache        # 清除 AI 缓存重新分析
+ *   node vue-auth-api-analyzer.mjs --prepare-ai      # 准备 AI 任务（per-module 文件）
+ *   node vue-auth-api-analyzer.mjs --merge-ai        # 合并 AI 结果
+ *   node vue-auth-api-analyzer.mjs --no-cache        # 清除 AI 缓存
+ *   node vue-auth-api-analyzer.mjs --ndjson          # NDJSON 进度输出
  *   node vue-auth-api-analyzer.mjs --help            # 显示帮助
  *
  * 外部依赖（需安装）：

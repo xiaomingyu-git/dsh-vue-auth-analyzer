@@ -26,6 +26,7 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --stati
 
 ```bash
 cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepare-ai --ndjson
+# 如需清除缓存重新生成任务：加 --no-cache
 ```
 
 输出目录 `dist/ai-tasks/`，包含：
