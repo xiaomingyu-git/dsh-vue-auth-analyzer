@@ -11,7 +11,7 @@ description: Use when the user asks to analyze button permissions, scan page API
 
 采用**双轨分析**：
 1. **静态 AST 分析**（零成本）：解析 Vue SFC 模板和脚本，追踪 `v-auth` → `@click handler` → `request() 调用` → `URL + method`
-2. **AI 补全**（按需）：对静态分析未覆盖的按钮，按模块分组后通过 DSH subagent **并发**分析源码补全映射
+2. **AI 补全**（按需）：对静态分析未覆盖的按钮，按模块分组后通过 DSH subagent **分批并发**分析源码补全映射
 
 ## 完整执行流程
 
@@ -35,13 +35,36 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 - 如果为 0，跳到 Step 5（全部命中缓存）
 - 如果 > 0，继续 Step 3
 
-### Step 3: 并发启动 subagent 分析（关键步骤）
+### Step 3: 分批启动 subagent 分析（关键步骤）
 
-**必须按以下方式执行，不可串行：**
+**⚠️ 必须控制并发数量，否则会触发 LLM API 429 限流！**
 
-1. 读取 `dist/ai-tasks.json` 中的 `tasks` 数组
-2. 在**同一个 assistant message** 中，对每个 task 调用 `subagent` tool，设置 `run_in_background: true`
-3. 每个 subagent 的 prompt 格式如下：
+#### 3.1 合并小模块
+
+读取 `dist/ai-tasks.json` 中的 `tasks` 数组。将按钮数 ≤ 3 的小模块合并为一个组合任务，大模块（> 3 按钮）保持独立。目标：**总任务数控制在 5-8 个**。
+
+合并方式：将多个小模块的 prompt 拼接，用分隔线隔开：
+```
+=== 模块: /module-a (2 buttons) ===
+{task_a.prompt}
+
+=== 模块: /module-b (1 button) ===  
+{task_b.prompt}
+```
+
+结果写入各自独立的 outputFile，每个模块一个 JSON 文件。
+
+#### 3.2 分批启动（每批最多 5 个）
+
+**绝对不要一次性启动超过 5 个 background subagent。** 按以下流程：
+
+1. 将所有任务分成若干批，每批 ≤ 5 个
+2. 在同一个 assistant message 中启动当前批次的所有 subagent（`run_in_background: true`）
+3. 等待当前批次全部完成（runtime 自动通知）
+4. 确认当前批次的 outputFile 都已生成
+5. 启动下一批，重复直到所有任务完成
+
+#### 3.3 Subagent prompt 模板
 
 ```
 你是 Vue 3 + TypeScript 代码分析专家。请阅读以下源码文件，分析指定按钮最终调用的后端 API 接口。
@@ -66,12 +89,8 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 - 直接用 write tool 写入文件，不要在对话中重复输出完整 JSON
 - 每个按钮对应 results 数组中的一个元素
 - 如果按钮只是打开弹窗展示数据、不涉及 API 调用，apis 返回空数组 []
+- 如果遇到 429 错误，等待 5 秒后重试，最多重试 3 次
 ```
-
-4. 所有 subagent 启动后，等待它们全部完成（runtime 会自动通知）
-5. 确认所有 `task.outputFile` 都已生成
-
-**注意**：不要在一个 subagent 完成后再启动下一个。必须在同一轮中全部 background 启动，这样才能真正并发。
 
 ### Step 4: 合并 AI 结果
 
