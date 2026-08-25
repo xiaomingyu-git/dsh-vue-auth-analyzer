@@ -21,8 +21,10 @@ description: ⚠️ MUST run script pipeline (node scripts/vue-auth-api-analyzer
 ### Step 1: 运行分析（一条命令完成全部工作）
 
 ```bash
-cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai --ndjson
+cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai
 ```
+
+**不要加 --ndjson**，让进度直接输出到对话中，用户可以实时看到。
 
 这条命令自动完成以下所有工作：
 1. 静态 AST 分析（解析 Vue SFC，追踪 v-auth → @click → request() → HTTP method + URL）

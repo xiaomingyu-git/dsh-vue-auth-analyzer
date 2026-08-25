@@ -2959,7 +2959,7 @@ async function runAICompletion() {
     const taskData = JSON.parse(fs.readFileSync(taskFilePath, "utf-8"));
     const prompt = taskData.prompt;
 
-    console.log("[" + (completed + 1) + "/" + totalTasks + "] 🔄 " + task.module + " (" + task.buttons + " buttons)");
+    console.log("[" + (completed + 1) + "/" + totalTasks + "] 🔄 分析中: " + task.module + " (" + task.buttons + " buttons)");
     emit({ type: "ai-progress", current: completed + 1, total: totalTasks, page: task.module, status: "analyzing", buttons: task.buttons });
 
     try {
@@ -2972,7 +2972,8 @@ async function runAICompletion() {
       fs.writeFileSync(outputFile, JSON.stringify(result, null, 2), "utf-8");
       completed++;
       emit({ type: "ai-progress", current: completed, total: totalTasks, page: task.module, status: "done" });
-      console.log("[" + completed + "/" + totalTasks + "] ✅ " + task.module);
+      var pct = Math.round((completed / totalTasks) * 100);
+      console.log("[" + completed + "/" + totalTasks + "] ✅ " + task.module + " (" + pct + "%)");
     } catch (err) {
       failed++;
       completed++;
