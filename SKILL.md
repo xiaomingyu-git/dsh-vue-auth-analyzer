@@ -68,7 +68,10 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --prepa
 #### 3.2 对每一批执行
 
 对当前批次的每个 task：
-1. **读取** `task.taskFile`（绝对路径）获取 prompt
+1. **用 bash 读取** `task.taskFile`（绝对路径）获取 prompt。**不要用 read tool 读 JSON**（它会加行号导致解析失败）。正确方式：
+   ```bash
+   node -e "const d=require('{task.taskFile}'); console.log(d.prompt)"
+   ```
 2. 用 prompt 内容启动 subagent
 
 **在同一个 assistant message 中**启动当前批次的所有 subagent：
