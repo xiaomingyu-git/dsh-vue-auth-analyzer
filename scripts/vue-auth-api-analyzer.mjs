@@ -2606,7 +2606,7 @@ async function collectModuleFiles(buttons, rootDir) {
   return [...allFiles];
 }
 
-function buildBatchPrompt(moduleName, buttons, fileContents) {
+function buildBatchPrompt(moduleName, buttons, fileContents, staticContext) {
   const filesSection = fileContents
     .map(({ filePath, content }) => "### File: " + filePath + "\n```\n" + content + "\n```")
     .join("\n\n");
@@ -2615,6 +2615,21 @@ function buildBatchPrompt(moduleName, buttons, fileContents) {
     const authClean = (b.authValue || "").replace(/['"]/g, "");
     return (i + 1) + ". v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | 标签: " + (b.tag || "") + " | 文件: " + b.file;
   }).join("\n");
+
+  // Build static context section: show what static analysis already resolved in this module
+  let staticSection = "";
+  if (staticContext && staticContext.length > 0) {
+    staticSection = "## 同模块已解析的按钮（静态分析结果，供参考）\n" +
+      "以下是同一模块中静态分析已成功关联 API 的按钮，可作为分析模式参考：\n\n";
+    for (const sc of staticContext.slice(0, 15)) { // Limit to avoid prompt bloat
+      const apis = (sc.apis || []).map(a => a.method + " " + a.url).join(", ");
+      const trace = sc.trace && sc.trace[0] && sc.trace[0].chain ? sc.trace[0].chain.join(" → ") : "";
+      staticSection += "- **" + (sc.name || "") + "** (" + (sc.authValue || "").replace(/['"]/g, "") + ")\n";
+      staticSection += "  API: " + apis + "\n";
+      if (trace) staticSection += "  调用链: " + trace + "\n";
+    }
+    staticSection += "\n";
+  }
 
   return "你是一个 Vue 3 + TypeScript 代码分析专家。分析以下源码，找出每个按钮最终调用的后端 API 接口。\n\n" +
     "## 分析规则\n" +
@@ -2625,6 +2640,7 @@ function buildBatchPrompt(moduleName, buttons, fileContents) {
     "5. 条件表达式如 dataSource.id ? PUT : POST，根据上下文判断\n" +
     "6. router.push / window.open → method: NAVIGATE, url: 目标路径\n\n" +
     "## 模块: " + moduleName + "\n\n" +
+    staticSection +
     "## 需要分析的按钮 (" + buttons.length + " 个):\n" + buttonsList + "\n\n" +
     "## 源码:\n" + filesSection + "\n\n" +
     "## 输出格式\n" +
@@ -2743,7 +2759,13 @@ async function prepareAITasks() {
       } catch { /* skip unreadable */ }
     }
 
-    const prompt = buildBatchPrompt(moduleName, buttons, fileContents);
+    // Extract matched buttons from same module as AI context
+    const pageData = mapping.find(p => p.page === moduleName);
+    const staticContext = pageData
+      ? (pageData.authBindings || []).filter(b => b.apis && b.apis.length > 0)
+      : [];
+
+    const prompt = buildBatchPrompt(moduleName, buttons, fileContents, staticContext);
     const safeName = moduleName.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_+|_+$/g, "") || "root";
 
     tasks.push({
