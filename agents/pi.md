@@ -25,14 +25,16 @@ npx vue-auth-analyzer --run-ai
 If you want Pi to automatically discover and load this tool when you mention permissions or API mapping:
 
 ```bash
-mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json -o ~/.pi/agent/skills/vue-auth-analyzer/package.json && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
+mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json -o ~/.pi/agent/skills/vue-auth-analyzer/package.json && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/scripts/vue-auth-api-analyzer.mjs -o ~/.pi/agent/skills/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
 ```
 
 Then use `/skill:vue-auth-analyzer` in Pi, or just say "analyze button permissions".
 
 ### LLM Credentials
 
-Check and set if missing:
+**No extra setup needed.** The script automatically reads Pi's credentials from `~/.pi/agent/auth.json` (the keys you set via `/login` in Pi).
+
+Only if Pi has no credentials configured, check and set manually:
 
 ```bash
 echo $OPENAI_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY

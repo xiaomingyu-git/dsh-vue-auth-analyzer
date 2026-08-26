@@ -1,1 +1,1 @@
-../../scripts/vue-auth-api-analyzer.mjs
+../../../scripts/vue-auth-api-analyzer.mjs

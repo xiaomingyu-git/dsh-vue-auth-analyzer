@@ -111,6 +111,8 @@ mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts \
      -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md \
   && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json \
      -o ~/.pi/agent/skills/vue-auth-analyzer/package.json \
+  && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/scripts/vue-auth-api-analyzer.mjs \
+     -o ~/.pi/agent/skills/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs \
   && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
 ```
 
