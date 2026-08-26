@@ -87,21 +87,21 @@ vue-auth-analyzer --merge-ai --ndjson
 
 将 `agents/claude.md` 的内容添加到项目的 `CLAUDE.md` 文件中。
 
-### Pi (Native Skill)
+### Pi
 
-Pi 原生支持 Agent Skills 标准，可以一键安装：
+最简单的方式——直接在 Vue 项目里运行，不需要安装 skill：
 
 ```bash
-# 全局安装（所有项目可用）
-git clone https://github.com/xiaomingyu-git/dsh-vue-auth-analyzer.git /tmp/vue-auth-analyzer
-cp -r /tmp/vue-auth-analyzer/pi-skill/vue-auth-analyzer ~/.pi/agent/skills/vue-auth-analyzer
-cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
-rm -rf /tmp/vue-auth-analyzer
+npx vue-auth-analyzer --run-ai
 ```
 
-安装后在 Pi 中使用 `/skill:vue-auth-analyzer` 或直接说「分析按钮权限」即可自动触发。
+如果想让 Pi 自动发现（可选），复制这一行到终端：
 
-也可以将 `agents/pi.md` 的内容手动添加到 Pi 的指令配置中。
+```bash
+mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json -o ~/.pi/agent/skills/vue-auth-analyzer/package.json && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
+```
+
+之后用 `/skill:vue-auth-analyzer` 或直接说「分析按钮权限」即可。
 
 ### DeepSeek Harness (DSH)
 

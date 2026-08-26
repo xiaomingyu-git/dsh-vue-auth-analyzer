@@ -10,38 +10,25 @@ Trigger this tool when the user asks about:
 
 **MUST use the script pipeline.** Never manually analyze Vue source code, grep for permissions, or guess API endpoints. The script handles all analysis.
 
-## Installation (Pi Skill — Recommended)
+## Installation
 
-This tool is available as a **native Pi skill**. Install it once and it loads automatically:
+### Quick start (no install needed)
 
-### Option A: Global install (available in all projects)
-
-```bash
-# Clone the skill to Pi's global skills directory
-git clone https://github.com/xiaomingyu-git/dsh-vue-auth-analyzer.git /tmp/vue-auth-analyzer
-cp -r /tmp/vue-auth-analyzer/pi-skill/vue-auth-analyzer ~/.pi/agent/skills/vue-auth-analyzer
-cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
-rm -rf /tmp/vue-auth-analyzer
-```
-
-### Option B: Project-level install (only in current project)
+Just run directly in your Vue project:
 
 ```bash
-# In your Vue project root
-git clone https://github.com/xiaomingyu-git/dsh-vue-auth-analyzer.git /tmp/vue-auth-analyzer
-cp -r /tmp/vue-auth-analyzer/pi-skill/vue-auth-analyzer .pi/skills/vue-auth-analyzer
-cd .pi/skills/vue-auth-analyzer && npm install
-rm -rf /tmp/vue-auth-analyzer
+npx vue-auth-analyzer --run-ai
 ```
 
-After installation, verify with `/skill:vue-auth-analyzer` in Pi.
+### Install as Pi Skill (optional, for auto-discovery)
 
-### Alternative: npm install (non-skill usage)
+If you want Pi to automatically discover and load this tool when you mention permissions or API mapping:
 
 ```bash
-npm install --save-dev vue-auth-analyzer
-npx vue-auth-analyzer --help
+mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json -o ~/.pi/agent/skills/vue-auth-analyzer/package.json && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
 ```
+
+Then use `/skill:vue-auth-analyzer` in Pi, or just say "analyze button permissions".
 
 ### LLM Credentials
 
