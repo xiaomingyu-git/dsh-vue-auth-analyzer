@@ -2930,32 +2930,62 @@ function loadAICredentials() {
   // Fall back to credential files if no env var provided
   if (!apiKey) {
     const home = process.env.HOME || "";
-    const credFiles = [
-      path.join(home, ".config", "vue-auth-analyzer", "credentials.yaml"),
-      path.join(home, ".dsh", ".credentials.yaml"),
-    ];
-    for (const credPath of credFiles) {
-      if (!fs.existsSync(credPath)) continue;
+
+    // Try Pi agent auth.json first (~/.pi/agent/auth.json)
+    // Format: { "deepseek": { "type": "api_key", "key": "sk-xxx" }, "openai": { ... } }
+    const piAuthPath = path.join(home, ".pi", "agent", "auth.json");
+    if (fs.existsSync(piAuthPath)) {
       try {
-        const content = fs.readFileSync(credPath, "utf-8");
-        // Try multiple credential key patterns
-        const patterns = [
-          { key: /AI_API_KEY:\s*(.+)/, url: null, mdl: null },
-          { key: /OPENAI_API_KEY:\s*(.+)/, url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
-          { key: /DEEPSEEK_API_KEY:\s*(.+)/, url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
-          { key: /QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/, url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
-        ];
-        for (const p of patterns) {
-          const match = content.match(p.key);
-          if (match && match[1].trim()) {
-            apiKey = match[1].trim();
-            if (p.url) baseUrl = p.url;
-            if (p.mdl) model = p.mdl;
+        const piAuth = JSON.parse(fs.readFileSync(piAuthPath, "utf-8"));
+        // Provider priority: deepseek > openai > anthropic > qwen > others
+        const providerMap = {
+          deepseek: { url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
+          openai: { url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
+          anthropic: { url: "https://api.anthropic.com/v1", mdl: "claude-sonnet-4-20250514" },
+          "qwen-token-plan-cn": { url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+          "qwen-token-plan": { url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+          openrouter: { url: "https://openrouter.ai/api/v1", mdl: "deepseek/deepseek-chat" },
+        };
+        for (const [provider, cfg] of Object.entries(providerMap)) {
+          const entry = piAuth[provider];
+          if (entry?.key && !entry.key.startsWith("$") && !entry.key.startsWith("!")) {
+            apiKey = entry.key;
+            baseUrl = cfg.url;
+            model = cfg.mdl;
             break;
           }
         }
-        if (apiKey) break;
       } catch {}
+    }
+
+    // Then try YAML credential files
+    if (!apiKey) {
+      const credFiles = [
+        path.join(home, ".config", "vue-auth-analyzer", "credentials.yaml"),
+        path.join(home, ".dsh", ".credentials.yaml"),
+      ];
+      for (const credPath of credFiles) {
+        if (!fs.existsSync(credPath)) continue;
+        try {
+          const content = fs.readFileSync(credPath, "utf-8");
+          const patterns = [
+            { key: /AI_API_KEY:\s*(.+)/, url: null, mdl: null },
+            { key: /OPENAI_API_KEY:\s*(.+)/, url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
+            { key: /DEEPSEEK_API_KEY:\s*(.+)/, url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
+            { key: /QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/, url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+          ];
+          for (const p of patterns) {
+            const match = content.match(p.key);
+            if (match && match[1].trim()) {
+              apiKey = match[1].trim();
+              if (p.url) baseUrl = p.url;
+              if (p.mdl) model = p.mdl;
+              break;
+            }
+          }
+          if (apiKey) break;
+        } catch {}
+      }
     }
   }
   return { apiKey, baseUrl, model };

@@ -123,15 +123,14 @@ mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts \
 Skill 安装在 `~/.pi/agent/skills/vue-auth-analyzer/`，全局生效，所有项目可用。
 如需仅在当前项目生效，将 `~/.pi/agent/skills/` 替换为 `.pi/skills/`。
 
-#### 配置 LLM 凭证
+#### LLM 凭证
 
-Pi skill 的 `--run-ai` 模式需要 LLM API key。在 shell profile 中添加：
+**无需额外配置。** 脚本会自动读取 Pi 已配置的凭证（`~/.pi/agent/auth.json`），复用你在 Pi 中 `/login` 设置的 API key。
+
+如果 Pi 中没有配置，也可以手动设置环境变量：
 
 ```bash
-# 任选一个，加到 ~/.zshrc 或 ~/.bashrc
-export DEEPSEEK_API_KEY=sk-xxx
-export OPENAI_API_KEY=sk-xxx
-export AI_API_KEY=sk-xxx
+export DEEPSEEK_API_KEY=sk-xxx   # 或 OPENAI_API_KEY、AI_API_KEY
 ```
 
 ### DeepSeek Harness (DSH)

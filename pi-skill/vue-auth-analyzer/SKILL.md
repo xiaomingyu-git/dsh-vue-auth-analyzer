@@ -24,21 +24,14 @@ Scans Vue 3 projects for buttons with permission directives (e.g. `v-auth`), tra
 cd {baseDir} && npm install
 ```
 
-### Configure LLM credentials
+### LLM Credentials
 
-Check if credentials are available:
+**No extra setup needed.** The script automatically reads Pi's own credentials from `~/.pi/agent/auth.json` — the same keys you configured via `/login` in Pi.
 
-```bash
-echo $OPENAI_API_KEY $ANTHROPIC_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
-```
-
-If all empty, ask the user to set one:
+Only if Pi has no credentials configured, ask the user to set an environment variable:
 
 ```bash
-export OPENAI_API_KEY=sk-xxx      # OpenAI
-export ANTHROPIC_API_KEY=sk-ant-xxx  # Anthropic
-export DEEPSEEK_API_KEY=sk-xxx    # DeepSeek
-export AI_API_KEY=sk-xxx          # Generic
+export DEEPSEEK_API_KEY=sk-xxx   # or OPENAI_API_KEY, AI_API_KEY
 ```
 
 ## Usage
