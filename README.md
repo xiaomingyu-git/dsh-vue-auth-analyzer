@@ -87,21 +87,52 @@ vue-auth-analyzer --merge-ai --ndjson
 
 将 `agents/claude.md` 的内容添加到项目的 `CLAUDE.md` 文件中。
 
-### Pi
+### Pi ([pi.dev](https://pi.dev))
 
-最简单的方式——直接在 Vue 项目里运行，不需要安装 skill：
+[Pi](https://pi.dev) 是一个终端 coding agent，原生支持 [Agent Skills 标准](https://agentskills.io/specification)。本工具已打包为 Pi skill，安装后 Pi 会自动识别并在你提到权限/API 相关话题时加载。
+
+#### 方式一：直接用（无需安装 skill）
+
+在 Vue 项目根目录下，让 Pi 执行：
 
 ```bash
 npx vue-auth-analyzer --run-ai
 ```
 
-如果想让 Pi 自动发现（可选），复制这一行到终端：
+Pi 有 bash 工具，可以直接运行这条命令。
+
+#### 方式二：安装为 Pi Skill（推荐）
+
+安装后 Pi 启动时自动发现，无需每次手动指定命令。在终端中运行：
 
 ```bash
-mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json -o ~/.pi/agent/skills/vue-auth-analyzer/package.json && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
+mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts \
+  && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md \
+     -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md \
+  && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json \
+     -o ~/.pi/agent/skills/vue-auth-analyzer/package.json \
+  && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
 ```
 
-之后用 `/skill:vue-auth-analyzer` 或直接说「分析按钮权限」即可。
+安装完成后：
+
+- **自动触发**：在 Pi 中说「分析按钮权限」「扫描 API 映射」等，Pi 自动匹配并加载 skill
+- **手动触发**：输入 `/skill:vue-auth-analyzer`
+- **验证安装**：输入 `/skill:vue-auth-analyzer --help`
+
+Skill 安装在 `~/.pi/agent/skills/vue-auth-analyzer/`，全局生效，所有项目可用。
+如需仅在当前项目生效，将 `~/.pi/agent/skills/` 替换为 `.pi/skills/`。
+
+#### 配置 LLM 凭证
+
+Pi skill 的 `--run-ai` 模式需要 LLM API key。在 shell profile 中添加：
+
+```bash
+# 任选一个，加到 ~/.zshrc 或 ~/.bashrc
+export DEEPSEEK_API_KEY=sk-xxx
+export OPENAI_API_KEY=sk-xxx
+export AI_API_KEY=sk-xxx
+```
 
 ### DeepSeek Harness (DSH)
 
