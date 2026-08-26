@@ -3,24 +3,31 @@
   "version": "2.2.0",
   "description": "Vue 3 按钮-权限-API 映射分析器：静态 AST 分析 + AI 补全，一键生成权限与接口的完整映射。支持 v-auth/v-permission 等指令、request/axios/http 等封装、router.push/window.open 导航识别。 · Vue 3 button-permission-API mapping analyzer: static AST analysis + AI completion, generating complete permission-to-API mappings.",
   "type": "module",
+  "main": "dsh/index.js",
   "bin": {
     "vue-auth-analyzer": "./bin/vue-auth-analyzer.mjs"
   },
-  "main": "scripts/vue-auth-api-analyzer.mjs",
   "exports": {
-    ".": "./scripts/vue-auth-api-analyzer.mjs",
+    ".": "./dsh/index.js",
+    "./client": "./dsh/client/client.js",
+    "./cordis.patch.yml": "./dsh/cordis.patch.yml",
+    "./cli": "./scripts/vue-auth-api-analyzer.mjs",
     "./package.json": "./package.json"
   },
   "files": [
     "bin",
     "scripts/vue-auth-api-analyzer.mjs",
     "agents",
+    "dsh",
     "metadata.json",
     "AGENTS.md",
     "README.md",
     "LICENSE"
   ],
   "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
     "vue",
     "vue3",
     "auth",
@@ -36,6 +43,19 @@
     "ai-agent"
   ],
   "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./dsh/cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
   "engines": {
     "node": ">=22.0.0"
   },
@@ -45,5 +65,17 @@
     "@vue/compiler-sfc": "^3.5.0",
     "@vue/compiler-dom": "^3.5.0",
     "fast-glob": "^3.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.1.0-rc.8",
+    "@deepseek-ai/dsh-settings": ">=0.1.0-rc.7"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-settings": {
+      "optional": true
+    }
   }
 }
