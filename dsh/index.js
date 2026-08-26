@@ -1,5 +1,6 @@
-// dsh-vue-auth-analyzer bundle entry point.
+// vue-auth-analyzer DSH adapter — bundle entry point.
 // Registers agent skill + Settings namespace + HTTP routes for GUI.
+// This file lives in dsh/; the core script and metadata are one level up.
 
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -11,6 +12,7 @@ import z from '@deepseek-ai/schemastery'
 export const name = 'dsh-vue-auth-analyzer'
 
 const packageRoot = dirname(fileURLToPath(import.meta.url))
+const parentRoot = join(packageRoot, '..')
 
 // ─── SKILL.md frontmatter parser ────────────────────────
 function splitFrontmatter(text) {
@@ -25,7 +27,7 @@ function splitFrontmatter(text) {
 
 // ─── Settings schema (generated from metadata.json) ─────
 let _meta;
-try { _meta = JSON.parse(readFileSync(join(packageRoot, 'metadata.json'), 'utf-8')); } catch {}
+try { _meta = JSON.parse(readFileSync(join(parentRoot, 'metadata.json'), 'utf-8')); } catch {}
 const AnalyzerSettings = z.object(Object.fromEntries(
   (_meta?.config || []).map(c => {
     const schema = c.type === 'boolean' ? z.boolean().default(c.default)
@@ -39,7 +41,7 @@ const SETTINGS_NS = settingsNamespace('dsh-vue-auth-analyzer')
 
 // ─── Sync settings to script CONFIG ─────────────────────
 function syncConfigToFile(settings) {
-  const scriptPath = join(packageRoot, 'scripts', 'vue-auth-api-analyzer.mjs')
+  const scriptPath = join(parentRoot, 'scripts', 'vue-auth-api-analyzer.mjs')
   if (!existsSync(scriptPath)) return
   let code = readFileSync(scriptPath, 'utf8')
 
@@ -89,7 +91,7 @@ let liveProgress = {
 export function apply(ctx) {
   // Register skill with hot-reload: re-reads SKILL.md on file change
   ctx.inject(['skills'], (sctx) => {
-    const skillPath = join(packageRoot, 'SKILL.md')
+    const skillPath = join(parentRoot, 'agents', 'SKILL.md')
     let dispose = null
 
     function registerSkill() {
@@ -136,7 +138,7 @@ export function apply(ctx) {
   ctx.inject(['settings'], (sctx) => {
     const base = {}
     try {
-      const scriptCode = readFileSync(join(packageRoot, 'scripts', 'vue-auth-api-analyzer.mjs'), 'utf8')
+      const scriptCode = readFileSync(join(parentRoot, 'scripts', 'vue-auth-api-analyzer.mjs'), 'utf8')
       const vm = scriptCode.match(/viewsDir:\s*"([^"]*)"/)
       if (vm) base.viewsDir = vm[1]
       const am = scriptCode.match(/authDirectiveName:\s*"([^"]*)"/)
@@ -159,7 +161,7 @@ export function apply(ctx) {
 
   // Register HTTP routes via dynamic inject (graceful if webServer unavailable)
   ctx.inject(['webServer'], (host) => {
-    const scriptPath = join(packageRoot, 'scripts', 'vue-auth-api-analyzer.mjs')
+    const scriptPath = join(parentRoot, 'scripts', 'vue-auth-api-analyzer.mjs')
 
     // POST /dsh-vue-auth-analyzer/run — start analysis with NDJSON streaming
     host.register({

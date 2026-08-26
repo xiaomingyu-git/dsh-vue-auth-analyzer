@@ -1,0 +1,14 @@
+{
+  "name": "vue-auth-analyzer",
+  "version": "2.2.0",
+  "type": "module",
+  "description": "Vue 3 button-permission-API mapping analyzer skill for Pi agent",
+  "license": "MIT",
+  "dependencies": {
+    "@babel/parser": "^7.25.0",
+    "@babel/types": "^7.25.0",
+    "@vue/compiler-sfc": "^3.5.0",
+    "@vue/compiler-dom": "^3.5.0",
+    "fast-glob": "^3.3.0"
+  }
+}

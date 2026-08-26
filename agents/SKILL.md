@@ -1,11 +1,11 @@
 ---
-name: dsh-vue-auth-analyzer
+name: vue-auth-analyzer
 description: ⚠️ MUST run script pipeline (node scripts/vue-auth-api-analyzer.mjs), do NOT manually analyze source. For 按钮权限、权限扫描、API映射、v-auth分析、权限审计、button permission、API mapping、auth scan.
 ---
 
 # Vue Auth-API Analyzer
 
-扫描 Vue 3 项目中所有带权限指令（如 `v-auth`）的按钮，追踪其调用的后端 API 接口，生成完整的 **按钮 → 权限标识 → HTTP API** 映射报告。
+扫描 Vue 3 项目中所有带权限指令（如 `v-auth`) 的按钮，追踪其调用的后端 API 接口，生成完整的 **按钮 → 权限标识 → HTTP API** 映射报告。
 
 ## ⛔ 禁止事项（违反则结果无效）
 
@@ -13,15 +13,69 @@ description: ⚠️ MUST run script pipeline (node scripts/vue-auth-api-analyzer
 - **禁止生成 Markdown 报告** — 不要写 .md 文件，所有输出由脚本生成 JSON
 - **禁止只列函数名** — "app.getAppsList" 不是 API 映射，必须是 "GET /iam/apps"
 - **禁止跳过步骤** — 必须按 Step 1→2 顺序执行
-- **禁止自己写合并/分析脚本** — 只用本插件提供的脚本命令
+- **禁止自己写合并/分析脚本** — 只用本工具提供的脚本命令
 - **禁止分步运行 --static-only / --prepare-ai / --merge-ai** — 用 --run-ai 一条命令搞定
+
+## 安装（首次使用时自动执行）
+
+在执行分析前，先确认工具已安装。如果未安装，**主动帮用户安装**：
+
+```bash
+# 在用户的 Vue 项目根目录下执行
+npm install --save-dev vue-auth-analyzer
+```
+
+安装完成后验证：
+
+```bash
+npx vue-auth-analyzer --help
+```
+
+如果用户不想修改 package.json，也可以用 npx 免安装运行（首次会自动下载）：
+
+```bash
+npx vue-auth-analyzer --run-ai
+```
+
+### LLM 凭证配置
+
+`--run-ai` 模式需要 LLM API 凭证。检查是否已配置：
+
+```bash
+echo $OPENAI_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
+```
+
+如果都为空，提示用户设置环境变量（任选一个）：
+
+```bash
+export OPENAI_API_KEY=sk-xxx    # OpenAI
+export DEEPSEEK_API_KEY=sk-xxx  # DeepSeek
+export AI_API_KEY=sk-xxx        # 通用
+```
+
+## 定位工具路径
+
+安装后按以下优先级查找工具：
+
+1. `npx vue-auth-analyzer --help` — 如果可用，直接用 npx
+2. `node_modules/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs` — npm 安装
+3. 环境变量 `VUE_AUTH_ANALYZER_DIR` 指向的安装目录
+4. 当前对话上下文中提供的路径
+
+找到后记为 `<tool-dir>`。
 
 ## 执行流程
 
 ### Step 1: 运行分析（一条命令完成全部工作）
 
 ```bash
-cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai
+cd <project-root> && node <tool-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai
+```
+
+或者如果通过 npx 安装：
+
+```bash
+cd <project-root> && npx vue-auth-analyzer --run-ai
 ```
 
 **不要加 --ndjson**，让进度直接输出到对话中，用户可以实时看到。
@@ -32,7 +86,7 @@ cd <project-root> && node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs --run-a
 3. 调用 LLM 分析未匹配的按钮（已有结果的模块自动跳过）
 4. 合并静态结果 + AI 结果为最终报告
 
-凭证自动从 `~/.dsh/.credentials.yaml` 读取，无需手动配置。
+凭证自动从环境变量或配置文件读取，无需手动配置。
 
 **不要自己读任务文件、不要自己启动 subagent、不要自己写合并脚本、不要分步执行。**
 
@@ -79,11 +133,4 @@ node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log
 
 ## 开发者文档
 
-如果你需要**修改本插件本身**（而非使用它分析项目），请阅读 `AGENTS.md`。
-
-关键规则：
-- **`metadata.json` 是文档单一数据源**。CLI flags、配置字段、输出文件列表、版本号都由它驱动
-- `printHelp()` 和 `index.js` schema 从 metadata.json 动态生成，不要硬编码
-- 新增 flag → 改 metadata.json + parseArgs() + main()，printHelp 自动更新
-- 新增配置 → 改 metadata.json + CONFIG + client locale/DEFAULTS/表单，schema 自动更新
-- 升版本 → 改 metadata.json + package.json
+如果你需要**修改本工具本身**（而非使用它分析项目），请阅读 `AGENTS.md`。

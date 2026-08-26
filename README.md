@@ -1,8 +1,117 @@
-# dsh-vue-auth-analyzer
+# vue-auth-analyzer
 
-> Vue 3 按钮-权限-API 映射分析器 · [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 插件
+> Vue 3 按钮-权限-API 映射分析器 · 静态 AST 分析 + AI 补全
 
 扫描 Vue 3 项目中所有带权限指令（如 `v-auth`）的按钮，追踪其调用的后端 API 接口，生成完整的 **按钮 → 权限标识 → HTTP API** 映射报告。
+
+## 快速开始
+
+```bash
+# 在你的 Vue 3 项目根目录下运行
+npx vue-auth-analyzer --run-ai
+```
+
+一条命令完成全部工作：
+1. 静态 AST 分析（解析 Vue SFC，追踪 v-auth → @click → request() → HTTP method + URL）
+2. 按模块分组，准备 AI 任务文件
+3. 调用 LLM 分析未匹配的按钮（已有结果的模块自动跳过）
+4. 合并静态结果 + AI 结果为最终报告
+
+输出在 `.auth-analyzer/auth-mapping-merged.json`。
+
+## 安装
+
+### npm 安装（推荐）
+
+```bash
+npm install vue-auth-analyzer
+# 或全局安装
+npm install -g vue-auth-analyzer
+```
+
+### 从源码使用
+
+```bash
+git clone https://github.com/xiaomingyu-git/dsh-vue-auth-analyzer.git
+cd dsh-vue-auth-analyzer
+npm install
+```
+
+## CLI 用法
+
+```bash
+vue-auth-analyzer [options]
+# 或
+node node_modules/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs [options]
+```
+
+| 命令 | 说明 | 输出 |
+|------|------|------|
+| `--run-ai` | **完整分析**（静态 + AI + 合并，推荐） | `auth-mapping-merged.json` |
+| `--static-only` | 仅静态 AST 分析 | `.auth-analyzer/static/` |
+| `--prepare-ai` | 准备 AI 任务文件 | `.auth-analyzer/ai-tasks/` |
+| `--merge-ai` | 合并 AI 结果 + 静态结果 | `auth-mapping-merged.json` |
+| `--no-cache` | 清除缓存后重新分析 | （配合其他命令使用） |
+| `--ndjson` | 输出 NDJSON 进度事件 | （配合任意命令使用） |
+| `-h, --help` | 显示帮助 | — |
+
+### 分步执行（高级用法）
+
+```bash
+# Step 1: 静态分析
+vue-auth-analyzer --static-only --ndjson
+
+# Step 2: 准备 AI 任务
+vue-auth-analyzer --prepare-ai --ndjson
+
+# Step 3: AI 分析（由 agent 或 --run-ai 执行）
+vue-auth-analyzer --run-ai --ndjson
+
+# Step 4: 合并结果
+vue-auth-analyzer --merge-ai --ndjson
+```
+
+## Agent 平台集成
+
+本工具提供多个 agent 平台的指令文件，位于 `agents/` 目录：
+
+### OpenAI Codex / ChatGPT
+
+将 `agents/codex.md` 的内容添加到你的 Codex 指令或 ChatGPT 自定义指令中。
+
+### Cursor
+
+将 `agents/cursor.md` 的内容添加到项目的 `.cursorrules` 文件中。
+
+### Claude Code
+
+将 `agents/claude.md` 的内容添加到项目的 `CLAUDE.md` 文件中。
+
+### Pi (Native Skill)
+
+Pi 原生支持 Agent Skills 标准，可以一键安装：
+
+```bash
+# 全局安装（所有项目可用）
+git clone https://github.com/xiaomingyu-git/dsh-vue-auth-analyzer.git /tmp/vue-auth-analyzer
+cp -r /tmp/vue-auth-analyzer/pi-skill/vue-auth-analyzer ~/.pi/agent/skills/vue-auth-analyzer
+cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
+rm -rf /tmp/vue-auth-analyzer
+```
+
+安装后在 Pi 中使用 `/skill:vue-auth-analyzer` 或直接说「分析按钮权限」即可自动触发。
+
+也可以将 `agents/pi.md` 的内容手动添加到 Pi 的指令配置中。
+
+### DeepSeek Harness (DSH)
+
+作为 DSH 插件安装：
+
+```bash
+dsh plugin --profile web add github:xiaomingyu-git/dsh-vue-auth-analyzer
+```
+
+DSH 适配层在 `dsh/` 子目录中，包含 GUI 配置面板、skill 热加载和 HTTP API。
 
 ## 工作原理
 
@@ -15,28 +124,29 @@
 │  追踪 v-auth → @click → handler → request() → URL+method │
 │  输出: .auth-analyzer/static/<module>.json                │
 └──────────────────────┬──────────────────────────────────┘
-                       │ 未匹配的按钮
+                       │ 未匹配 + 部分解析的按钮
                        ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Step 2: 准备 AI 任务                                     │
 │  按模块分组，每个模块生成一个任务文件                        │
 │  包含：完整源码 + 已确认按钮作为参考锚点                    │
+│  ⚠️ 部分解析按钮附带 import 路径/函数名作为线索             │
 │  输出: .auth-analyzer/ai-tasks/<module>.json              │
 └──────────────────────┬──────────────────────────────────┘
-                       │ 每批 2 个任务
+                       │
                        ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Step 3: DSH Subagent 并发分析                            │
-│  Agent 分批启动 subagent（每批 ≤2 个，避免 429 限流）      │
-│  每个 subagent 分析一个模块，穿透弹窗/抽屉追踪到实际 API    │
+│  Step 3: AI 分析                                         │
+│  --run-ai 模式：脚本直接调 LLM（支持并发控制）              │
+│  或由各 agent 平台读取 task 文件执行                       │
 │  输出: .auth-analyzer/ai-results/<module>.json            │
 └──────────────────────┬──────────────────────────────────┘
-                       │ 全部完成后
+                       │
                        ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Step 4: 合并结果                                         │
 │  静态结果 + AI 结果 → 统一映射表                           │
-│  静态优先（已确认的不被 AI 覆盖）                           │
+│  静态优先；partial + AI → source: "static+ai"             │
 │  输出: .auth-analyzer/auth-mapping-merged.json            │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -44,75 +154,26 @@
 ### 核心特性
 
 - **静态 AST 分析**：精确追踪 `@click` → handler → `request()` → HTTP method + URL，含跨组件弹窗/抽屉穿透
-- **AI 补全**：对静态分析未覆盖的按钮，通过 DSH subagent 并发分析源码补全映射
-- **Plan A 全模块上下文**：AI 收到模块内所有按钮（已确认 ✅ + 待分析 ❓），已确认按钮作为推理锚点
+- **Partial match 补全**：静态追踪到 import 路径但未解析出 HTTP URL 的按钮，标记为 ⚠️ 部分解析，交由 AI 利用线索补全
+- **AI 补全**：对静态分析未覆盖的按钮，通过 LLM 分析源码补全映射
+- **Plan A 全模块上下文**：AI 收到模块内所有按钮（✅已确认 + ⚠️部分解析 + ❓待分析），已确认按钮作为推理锚点
 - **增量缓存**：已分析的模块自动跳过，支持 `--no-cache` 强制重分析
-- **Per-module 文件结构**：所有中间产物按模块拆分，避免单文件过大导致 agent 解析失败
-- **GUI 配置面板**：DSH 设置页面中可直接配置参数、运行分析、查看进度、取消/重试
-- **SKILL.md 热加载**：更新 SKILL.md 后无需重启 DSH，5 秒内自动生效
-
-## 安装
-
-### 作为 DSH 插件
-
-```bash
-dsh plugin --profile web add github:xiaomingyu-git/dsh-vue-auth-analyzer
-```
-
-安装后在 DSH 对话中说「分析按钮权限」或「扫描 API 映射」即可触发。
-
-### 独立使用（不依赖 DSH）
-
-```bash
-git clone https://github.com/xiaomingyu-git/dsh-vue-auth-analyzer.git
-cd dsh-vue-auth-analyzer
-npm install
-```
-
-## CLI 用法
-
-```bash
-# 在项目根目录下运行
-node <plugin-dir>/scripts/vue-auth-api-analyzer.mjs [options]
-```
-
-| 命令 | 说明 | 输出 |
-|------|------|------|
-| `--static-only` | 仅静态 AST 分析 | `.auth-analyzer/static/` + `auth-mapping.json` |
-| `--prepare-ai` | 准备 AI 任务文件 | `.auth-analyzer/ai-tasks/` |
-| `--merge-ai` | 合并 AI 结果 + 静态结果 | `auth-mapping-merged.json` |
-| `--no-cache` | 清除缓存后重新准备任务 | （配合 `--prepare-ai` 使用） |
-| `--ndjson` | 输出 NDJSON 进度事件 | （配合任意命令使用） |
-
-### 完整流程示例
-
-```bash
-# Step 1: 静态分析
-node scripts/vue-auth-api-analyzer.mjs --static-only --ndjson
-
-# Step 2: 准备 AI 任务
-node scripts/vue-auth-api-analyzer.mjs --prepare-ai --ndjson
-
-# Step 3: (由 DSH agent 通过 subagent 并发执行，手动使用时跳过此步)
-
-# Step 4: 合并结果
-node scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
-```
+- **Per-module 文件结构**：所有中间产物按模块拆分，避免单文件过大
+- **多平台支持**：CLI / Codex / Cursor / Claude Code / Pi / DSH
 
 ## 输出文件
 
-所有输出默认在项目根目录的 `.auth-analyzer/` 下（不会被项目构建清理）：
+所有输出默认在项目根目录的 `.auth-analyzer/` 下：
 
 | 文件 | 说明 |
 |------|------|
-| `static/index.json` | 静态分析索引（小文件，页面列表 + 按钮统计） |
-| `static/<module>.json` | 每模块静态分析结果（含 trace 调用链） |
-| `auth-mapping.json` | 静态分析单体文件（向后兼容） |
-| `ai-tasks/index.json` | AI 任务索引（小文件，模块列表 + 分批计划） |
-| `ai-tasks/<module>.json` | 每模块 AI 任务（含完整 prompt + 源码） |
-| `ai-results/<module>.json` | 每模块 AI 分析结果（subagent 写入） |
-| `auth-mapping-ai.json` | AI 补全汇总 |
 | `auth-mapping-merged.json` | **最终合并报告**（静态 + AI） |
+| `static/index.json` | 静态分析索引 |
+| `static/<module>.json` | 每模块静态分析结果（含 trace 调用链） |
+| `ai-tasks/index.json` | AI 任务索引 |
+| `ai-tasks/<module>.json` | 每模块 AI 任务（含完整 prompt + 源码） |
+| `ai-results/<module>.json` | 每模块 AI 分析结果 |
+| `auth-mapping-ai.json` | AI 补全汇总 |
 | `.ai-auth-cache.json` | 增量缓存 |
 
 ### merged.json 结构
@@ -149,26 +210,21 @@ node scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
 | 值 | 含义 |
 |----|------|
 | `static` | 静态 AST 分析匹配（高置信度） |
-| `ai` | AI subagent 分析匹配 |
+| `ai` | AI 分析匹配 |
+| `static+ai` | 静态追踪到 import 路径，AI 补全了真实 HTTP URL |
 | `unresolved` | 未匹配到任何 API |
 
-### API method 说明
+## 凭证配置
 
-| Method | 含义 |
-|--------|------|
-| GET/POST/PUT/DELETE/PATCH | HTTP API 调用 |
-| NAVIGATE | 页面跳转（router.push / window.open） |
-| *(空 apis 数组)* | 纯前端 UI 操作（只读预览弹窗等） |
+`--run-ai` 模式需要 LLM API 凭证，按以下优先级自动检测：
 
-## GUI 使用
+1. **CONFIG 配置**：编辑 `scripts/vue-auth-api-analyzer.mjs` 中的 `CONFIG.ai`
+2. **环境变量**：`AI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY`
+3. **配置文件**：
+   - `~/.config/vue-auth-analyzer/credentials.yaml`
+   - `~/.dsh/.credentials.yaml`（向后兼容）
 
-安装为 DSH 插件后，在 **设置 → 插件 → Auth Analyzer** 面板中可以：
-
-- 配置分析参数（页面目录、权限指令名、i18n 文件、排除模式）
-- 点击「静态分析」运行 AST 分析
-- 点击「全量分析」运行静态 + 准备 AI 任务
-- 点击「合并结果」合并 AI 结果
-- 实时查看进度、取消运行、重试
+Base URL 和模型也会根据检测到的凭证类型自动设置。
 
 ## 配置
 
@@ -179,7 +235,7 @@ node scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
 | `i18nFile` | `src/lang/package/zh-cn.ts` | i18n 翻译文件路径，留空跳过 |
 | `excludePatterns` | `**/components/**,**/login/**,**/profile/**` | 排除的 glob 模式 |
 | `ai.enabled` | `true` | 是否启用 AI 补全 |
-| `outputDir` | `.auth-analyzer` | 输出目录 |
+| `ai.concurrency` | `2` | `--run-ai` 模式下最大并发 LLM 调用数 |
 
 ## 适配其他项目
 
@@ -193,19 +249,18 @@ node scripts/vue-auth-api-analyzer.mjs --merge-ai --ndjson
 
 ### 没有 i18n
 
-设置 `CONFIG.i18nFile = null` 或在 GUI 面板中清空 i18n 文件路径。
+设置 `CONFIG.i18nFile = null`。
 
 ### 非 Element Plus 项目
 
-脚本不依赖 Element Plus，任何 Vue 3 项目都可用。按钮标签名不影响分析。
+脚本不依赖 Element Plus，任何 Vue 3 项目都可用。
 
 ## 技术栈
 
 - **运行时**: Node.js ≥ 22
 - **AST 解析**: @babel/parser + @vue/compiler-sfc + @vue/compiler-dom
 - **文件匹配**: fast-glob
-- **平台集成**: DeepSeek Harness (Cordis) 插件体系
-- **AI 执行**: DSH subagent 并发（非脚本直接调用 LLM）
+- **AI 执行**: 脚本直调 OpenAI 兼容 API（--run-ai 模式）
 
 ## License
 

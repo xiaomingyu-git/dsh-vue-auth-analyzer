@@ -2105,13 +2105,20 @@ function mergeBindingsWithApis(
 }
 
 function recordTrace(traces, node, evt, chain, api, env) {
+  const hasRealUrl = !!api.url;
+  const traceApi = { url: api.url || api.from || api.callee, method: api.method };
+  if (!hasRealUrl && (api.from || api.callee)) {
+    traceApi.partial = true;
+    if (api.from) traceApi.importPath = api.from;
+    if (api.callee) traceApi.calleeName = api.callee;
+  }
   traces.push({
     auth: node.authValue,
     tag: node.tag,
     name: node.name,
     event: evt.event,
     expression: evt.expression,
-    api: { url: api.url || api.from || api.callee, method: api.method },
+    api: traceApi,
     chain,
     env,
   });
@@ -2205,6 +2212,7 @@ function buildTagToFileMap(vueFiles) {
 }
 
 function addApiToSet(apiSet, api, allowedMethods, env) {
+  const hasRealUrl = !!api?.url;
   const url = api?.url || api?.from || api?.callee;
   if (!url) return;
   const rawMethod = api?.method;
@@ -2221,7 +2229,14 @@ function addApiToSet(apiSet, api, allowedMethods, env) {
     }
     const key = `${normalized}|${url}`;
     if (!apiSet.has(key)) {
-      apiSet.set(key, { url, method: normalized });
+      const entry = { url, method: normalized };
+      // Mark as partial when we only have an import path, not a real HTTP URL
+      if (!hasRealUrl && (api?.from || api?.callee)) {
+        entry.partial = true;
+        if (api?.from) entry.importPath = api.from;
+        if (api?.callee) entry.calleeName = api.callee;
+      }
+      apiSet.set(key, entry);
     }
   });
 }
@@ -2595,6 +2610,33 @@ async function collectModuleFiles(buttons, rootDir) {
     const apiFiles = await fg("**/api/index.ts", { cwd: pageDir, absolute: true });
     const parentApi = await fg("api/index.ts", { cwd: path.dirname(pageDir), absolute: true });
     [...vueFiles, ...apiFiles, ...parentApi].forEach(f => allFiles.add(f));
+
+    // For partial matches, also collect the specific api file referenced by import path
+    if (button.partial && button.apis) {
+      for (const api of button.apis) {
+        if (api.importPath) {
+          const srcDir = path.join(rootDir, "src");
+          let resolved;
+          if (api.importPath.startsWith("@/")) {
+            resolved = path.resolve(srcDir, api.importPath.slice(2));
+          } else if (api.importPath.startsWith(".")) {
+            resolved = path.resolve(path.dirname(absFile), api.importPath);
+          }
+          if (resolved) {
+            const candidates = [
+              resolved,
+              `${resolved}.ts`, `${resolved}.js`,
+              path.join(resolved, "index.ts"), path.join(resolved, "index.js"),
+            ];
+            candidates.forEach(c => {
+              try {
+                if (fs.statSync(c).isFile()) allFiles.add(c);
+              } catch {}
+            });
+          }
+        }
+      }
+    }
   }
   return [...allFiles];
 }
@@ -2607,11 +2649,21 @@ function buildBatchPrompt(moduleName, buttons, fileContents) {
   const buttonsList = buttons.map((b, i) => {
     const authClean = (b.authValue || "").replace(/['"]/g, "");
     if (b.matched) {
-      // Already resolved by static analysis — show as confirmed reference
+      // Fully resolved by static analysis — show as confirmed reference
       const apis = (b.apis || []).map(a => a.method + " " + a.url).join(", ");
       return (i + 1) + ". ✅ [已确认] v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | API: " + apis;
+    } else if (b.partial) {
+      // Static analysis found the import path but couldn't resolve the actual HTTP URL
+      const hints = (b.apis || []).map(a => {
+        const parts = [];
+        if (a.importPath) parts.push("导入路径: " + a.importPath);
+        if (a.calleeName) parts.push("调用函数: " + a.calleeName);
+        if (a.method && !a.partial) parts.push("方法: " + a.method);
+        return parts.join(", ");
+      }).filter(Boolean).join("; ");
+      return (i + 1) + ". ⚠️ [部分解析] v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | 标签: " + (b.tag || "") + " | 文件: " + b.file + (hints ? " | 静态线索: " + hints : "");
     } else {
-      // Needs AI analysis
+      // Fully unmatched — needs AI analysis from scratch
       return (i + 1) + ". ❓ [待分析] v-auth=\"" + authClean + "\" | 名称: \"" + (b.name || "") + "\" | 标签: " + (b.tag || "") + " | 文件: " + b.file;
     }
   }).join("\n");
@@ -2629,13 +2681,19 @@ function buildBatchPrompt(moduleName, buttons, fileContents) {
     "3. **只有纯展示型弹窗才返回空 apis**：如果按钮打开的是纯预览/详情弹窗（只读展示数据，没有确认/提交按钮，没有任何写操作），apis 才返回空数组\n" +
     "4. el-upload 追踪 :http-request 或 :on-change\n" +
     "5. 条件表达式如 dataSource.id ? PUT : POST，根据上下文判断\n" +
-    "6. router.push / window.open → method: NAVIGATE, url: 目标路径\n\n" +
+    "6. router.push / window.open → method: NAVIGATE, url: 目标路径\n" +
+    "7. **⚠️ [部分解析] 按钮的特殊处理**：这些按钮的静态分析已追踪到 import 路径和调用函数名，但未能从 api/index.ts 中解析出具体的 HTTP URL。你需要：\n" +
+    "   a. 利用提供的「静态线索」（导入路径、函数名）作为起点，直接在源码中找到对应的 api/index.ts 文件\n" +
+    "   b. 在该文件中定位到具体函数，读取其 request() 调用中的 url 和 method\n" +
+    "   c. 如果函数内部有复杂逻辑（条件分支、封装层、re-export），继续深入追踪直到找到真实的 HTTP endpoint\n" +
+    "   d. 你的结果将与静态分析互为补充：静态提供了调用链路的上半段（按钮→函数），你负责补全下半段（函数→HTTP URL）\n\n" +
     "## 模块: " + moduleName + "\n\n" +
     "## 模块按钮清单 (" + buttons.length + " 个):\n" +
-    "✅ [已确认] = 静态分析已确认的 API 映射，不需要重新分析，但可作为你分析其他按钮的参考模式\n" +
-    "❓ [待分析] = 需要你分析的按钮\n\n" +
+    "✅ [已确认] = 静态分析已完全确认的 API 映射（含真实 HTTP URL），不需要重新分析，但可作为你分析其他按钮的参考模式\n" +
+    "⚠️ [部分解析] = 静态分析已追踪到 import 路径/函数名，但未解析出真实 HTTP URL，需要你补全具体的 API endpoint\n" +
+    "❓ [待分析] = 静态分析完全未匹配，需要你从头分析的按钮\n\n" +
     buttonsList + "\n\n" +
-    "**重要**：只为 ❓ [待分析] 的按钮输出结果。✅ [已确认] 的按钮仅作为参考，不要输出它们的结果。\n\n" +
+    "**重要**：为 ❓ [待分析] 和 ⚠️ [部分解析] 的按钮输出结果。✅ [已确认] 的按钮仅作为参考，不要输出它们的结果。\n\n" +
     "## 源码:\n" + filesSection + "\n\n" +
     "## 输出格式\n" +
     "严格输出 JSON 数组，每个元素对应一个按钮：\n" +
@@ -2688,7 +2746,12 @@ async function prepareAITasks() {
       totalButtons++;
       const key = page.page;
       if (!groups[key]) groups[key] = [];
-      const isUnmatched = !binding.apis || binding.apis.length === 0;
+      // A button needs AI analysis if:
+      // 1. It has no apis at all (fully unmatched), OR
+      // 2. ALL its apis are partial (import path resolved but no real HTTP URL)
+      const hasNoApis = !binding.apis || binding.apis.length === 0;
+      const allPartial = !hasNoApis && binding.apis.every(a => a.partial);
+      const isUnmatched = hasNoApis || allPartial;
       groups[key].push({
         page: page.page,
         authValue: binding.authValue,
@@ -2698,6 +2761,7 @@ async function prepareAITasks() {
         matched: !isUnmatched,
         apis: binding.apis || [],
         trace: binding.trace || [],
+        partial: allPartial,
       });
       if (isUnmatched) {
         unmatchedCount++;
@@ -2835,27 +2899,62 @@ async function prepareAITasks() {
 // ─── LLM 调用（--run-ai 模式）────────────────────────────
 
 function loadAICredentials() {
-  // Priority: CONFIG > env vars > ~/.dsh/.credentials.yaml
-  let apiKey = CONFIG.ai.apiKey || process.env.AI_API_KEY || "";
-  let baseUrl = CONFIG.ai.baseUrl || process.env.AI_BASE_URL || "https://api.deepseek.com/v1";
-  let model = CONFIG.ai.model || process.env.AI_MODEL || "deepseek-chat";
+  // Priority: CONFIG > env vars > config files
+  // Env vars checked in order: AI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY
+  let apiKey = CONFIG.ai.apiKey
+    || process.env.AI_API_KEY
+    || process.env.OPENAI_API_KEY
+    || process.env.ANTHROPIC_API_KEY
+    || process.env.DEEPSEEK_API_KEY
+    || "";
+  let baseUrl = CONFIG.ai.baseUrl
+    || process.env.AI_BASE_URL
+    || process.env.OPENAI_BASE_URL
+    || "https://api.deepseek.com/v1";
+  let model = CONFIG.ai.model
+    || process.env.AI_MODEL
+    || process.env.OPENAI_MODEL
+    || "deepseek-chat";
 
+  // Auto-detect base URL from known API key env vars
+  if (!CONFIG.ai.baseUrl && !process.env.AI_BASE_URL && !process.env.OPENAI_BASE_URL) {
+    if (process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      baseUrl = "https://api.openai.com/v1";
+      model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      baseUrl = "https://api.anthropic.com/v1";
+      model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+    }
+  }
+
+  // Fall back to credential files if no env var provided
   if (!apiKey) {
-    const credPath = path.join(process.env.HOME || "", ".dsh", ".credentials.yaml");
-    if (fs.existsSync(credPath)) {
+    const home = process.env.HOME || "";
+    const credFiles = [
+      path.join(home, ".config", "vue-auth-analyzer", "credentials.yaml"),
+      path.join(home, ".dsh", ".credentials.yaml"),
+    ];
+    for (const credPath of credFiles) {
+      if (!fs.existsSync(credPath)) continue;
       try {
         const content = fs.readFileSync(credPath, "utf-8");
-        // Prefer Qwen (DSH platform default) over DeepSeek
-        const qwenMatch = content.match(/QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/);
-        if (qwenMatch) {
-          apiKey = qwenMatch[1].trim();
-          baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-          model = "qwen-plus";
+        // Try multiple credential key patterns
+        const patterns = [
+          { key: /AI_API_KEY:\s*(.+)/, url: null, mdl: null },
+          { key: /OPENAI_API_KEY:\s*(.+)/, url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
+          { key: /DEEPSEEK_API_KEY:\s*(.+)/, url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
+          { key: /QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/, url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+        ];
+        for (const p of patterns) {
+          const match = content.match(p.key);
+          if (match && match[1].trim()) {
+            apiKey = match[1].trim();
+            if (p.url) baseUrl = p.url;
+            if (p.mdl) model = p.mdl;
+            break;
+          }
         }
-        if (!apiKey) {
-          const deepseekMatch = content.match(/DEEPSEEK_API_KEY:\s*(.+)/);
-          if (deepseekMatch) apiKey = deepseekMatch[1].trim();
-        }
+        if (apiKey) break;
       } catch {}
     }
   }
@@ -3153,13 +3252,34 @@ function mergeResults(staticData, aiData) {
       const aiKey = page.page + "|" + b.authValue;
       const aiResult = aiMap.get(aiKey);
 
-      if (b.apis && b.apis.length > 0) {
+      // Check if all static apis are partial (import path only, no real HTTP URL)
+      const allPartial = b.apis && b.apis.length > 0 && b.apis.every(a => a.partial);
+
+      if (b.apis && b.apis.length > 0 && !allPartial) {
+        // Static has real HTTP URLs — use static result
         staticMatched++;
         buttons.push({
           authId: (b.authValue || "").replace(/['"]/g, ""),
           label: b.name || "", tag: b.tag || "", file: b.file || "", line: b.line || 0,
           apis: b.apis.map((a) => ({ method: a.method, url: a.url })),
           source: "static", confidence: "high",
+        });
+      } else if (allPartial && aiResult && aiResult.apis && aiResult.apis.length > 0) {
+        // Static had partial results, AI补全了真实 HTTP URL — use AI result (complementary)
+        aiMatched++;
+        buttons.push({
+          authId: (b.authValue || "").replace(/['"]/g, ""),
+          label: b.name || "", tag: b.tag || "", file: b.file || "", line: b.line || 0,
+          apis: aiResult.apis.map((a) => ({ method: a.method, url: a.url, apiFunction: a.apiFunction || "", note: a.note || "" })),
+          source: "static+ai", confidence: aiResult.confidence || "medium", reasoning: aiResult.reasoning || "",
+        });
+      } else if (b.apis && b.apis.length > 0 && allPartial && !aiResult) {
+        // Static had partial results but no AI result available — keep partial as fallback
+        buttons.push({
+          authId: (b.authValue || "").replace(/['"]/g, ""),
+          label: b.name || "", tag: b.tag || "", file: b.file || "", line: b.line || 0,
+          apis: b.apis.map((a) => ({ method: a.method, url: a.url, importPath: a.importPath || "", calleeName: a.calleeName || "" })),
+          source: "static", confidence: "low", reasoning: "仅解析到 import 路径，未获取到真实 HTTP URL",
         });
       } else if (aiResult) {
         if (aiResult.apis && aiResult.apis.length > 0) {

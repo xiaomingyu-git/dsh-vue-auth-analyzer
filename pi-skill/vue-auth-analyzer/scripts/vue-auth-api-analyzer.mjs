@@ -1,0 +1,1 @@
+../../scripts/vue-auth-api-analyzer.mjs

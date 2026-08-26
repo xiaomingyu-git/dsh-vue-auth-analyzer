@@ -1,6 +1,6 @@
 {
   "version": "2.2.0",
-  "name": "dsh-vue-auth-analyzer",
+  "name": "vue-auth-analyzer",
   "description": "Vue 3 按钮-权限-API 映射分析器",
   "outputDir": ".auth-analyzer",
   "flags": [
