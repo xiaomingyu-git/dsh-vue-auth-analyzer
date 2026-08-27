@@ -148,6 +148,7 @@ window.__ModuleLoader__.load({
       var _s2 = react.useState(null), settings = _s2[0], setSettings = _s2[1];
       var _s3 = react.useState("idle"), saveState = _s3[0], setSaveState = _s3[1];
       var _s4 = react.useState({}), drafts = _s4[0], setDrafts = _s4[1];
+      var _s5 = react.useState(false), noCache = _s5[0], setNoCache = _s5[1];
 
 
       // Run state
@@ -206,6 +207,7 @@ window.__ModuleLoader__.load({
           var bodyOpts = { cwd: current("cwd") || undefined };
           if (mode === "static") bodyOpts.staticOnly = true;
           if (mode === "runAi") bodyOpts.runAi = true;
+          if (noCache) bodyOpts.noCache = true;
           var res = await fetch("/dsh-vue-auth-analyzer/run", {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -418,6 +420,9 @@ window.__ModuleLoader__.load({
         ) : null,
 
         sectionTitle(t("sectionRun")),
+        h("label", { className: "ava-row", style: { gap: "6px", marginBottom: "8px", cursor: "pointer", fontSize: "13px" } },
+          h("input", { type: "checkbox", checked: noCache, onChange: function(e) { setNoCache(e.target.checked); } }),
+          "清除缓存重新分析（忽略已有 AI 结果）"),
         h("div", { className: "ava-row", style: { gap: "8px" } },
           h(Button, { variant: "outline", size: "sm", disabled: isRunning, onClick: function() { startRun("static"); } },
             t("runStatic")),
