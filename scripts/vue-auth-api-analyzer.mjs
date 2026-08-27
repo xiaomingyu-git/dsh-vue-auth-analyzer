@@ -49,7 +49,7 @@ const CONFIG = {
     apiKey: "",
     baseUrl: "",
     model: "",
-    concurrency: 2,
+    concurrency: 1,
   },
 };
 
@@ -1157,7 +1157,7 @@ function loadAICredentials() {
   return { apiKey, baseUrl, model };
 }
 
-async function callLLM(config, messages, maxRetries = 3) {
+async function callLLM(config, messages, maxRetries = 5) {
   const url = config.baseUrl.replace(/\/+$/, "") + "/chat/completions";
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -1171,7 +1171,10 @@ async function callLLM(config, messages, maxRetries = 3) {
         signal: AbortSignal.timeout(120000),
       });
       if (res.status === 429 || res.status === 402) {
-        const wait = 5000 * (attempt + 1);
+        if (attempt >= maxRetries - 1) {
+          throw new Error("Rate limited (429/402) after " + maxRetries + " attempts");
+        }
+        const wait = 10000 * (attempt + 1);
         console.log("  ⏳ 429 rate limited, waiting " + (wait / 1000) + "s...");
         await new Promise(r => setTimeout(r, wait));
         continue;
@@ -1248,6 +1251,9 @@ async function runAICompletion() {
         { role: "user", content: taskData.prompt + "\n\nOutput strictly as JSON: { \"results\": [...], \"module\": \"" + task.module + "\" }" },
       ];
       const result = await callLLM(creds, messages);
+      if (!result || typeof result !== "object") {
+        throw new Error("LLM returned invalid response: " + String(result));
+      }
       fs.writeFileSync(outputFile, JSON.stringify(result, null, 2), "utf-8");
       completed++;
       emit({ type: "ai-progress", current: completed, total: totalTasks, page: task.module, status: "done" });
