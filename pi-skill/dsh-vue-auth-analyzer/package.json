@@ -1,5 +1,5 @@
 {
-  "name": "vue-auth-analyzer",
+  "name": "dsh-vue-auth-analyzer",
   "version": "2.2.0",
   "type": "module",
   "description": "Vue 3 button-permission-API mapping analyzer skill for Pi agent",

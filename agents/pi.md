@@ -20,12 +20,12 @@ Before running analysis, check if the tool is installed. **If not, install it fo
 
 ```bash
 cd <project-root>
-npm install --save-dev vue-auth-analyzer
+npm install --save-dev dsh-vue-auth-analyzer
 ```
 
-Verify: `npx vue-auth-analyzer --help`
+Verify: `npx dsh-vue-auth-analyzer --help`
 
-Alternative: `npx vue-auth-analyzer --run-ai` (auto-downloads)
+Alternative: `npx dsh-vue-auth-analyzer --run-ai` (auto-downloads)
 
 ### LLM Credentials
 
@@ -43,8 +43,8 @@ export AI_API_KEY=sk-xxx        # Generic
 
 ## Finding the Tool
 
-1. `npx vue-auth-analyzer --help`
-2. `node_modules/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs`
+1. `npx dsh-vue-auth-analyzer --help`
+2. `node_modules/dsh-vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs`
 3. User-provided path
 
 Store as `<tool-dir>`.
@@ -60,7 +60,7 @@ cd <project-root> && node <tool-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai
 Or via npx:
 
 ```bash
-cd <project-root> && npx vue-auth-analyzer --run-ai
+cd <project-root> && npx dsh-vue-auth-analyzer --run-ai
 ```
 
 This handles everything:

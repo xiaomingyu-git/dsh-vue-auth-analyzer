@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * vue-auth-analyzer CLI entry point.
+ * dsh-vue-auth-analyzer CLI entry point.
  *
  * Usage:
- *   npx vue-auth-analyzer --run-ai          # Full analysis (static + AI)
- *   npx vue-auth-analyzer --static-only     # Static AST analysis only
- *   npx vue-auth-analyzer --prepare-ai      # Prepare AI task files
- *   npx vue-auth-analyzer --merge-ai        # Merge AI + static results
- *   npx vue-auth-analyzer --help            # Show help
+ *   npx dsh-vue-auth-analyzer --run-ai          # Full analysis (static + AI)
+ *   npx dsh-vue-auth-analyzer --static-only     # Static AST analysis only
+ *   npx dsh-vue-auth-analyzer --prepare-ai      # Prepare AI task files
+ *   npx dsh-vue-auth-analyzer --merge-ai        # Merge AI + static results
+ *   npx dsh-vue-auth-analyzer --help            # Show help
  *
  * All flags are forwarded to scripts/vue-auth-api-analyzer.mjs.
  * The script runs in the current working directory (your Vue project root).
@@ -24,7 +24,7 @@ const scriptPath = resolve(__dirname, '..', 'scripts', 'vue-auth-api-analyzer.mj
 
 if (!existsSync(scriptPath)) {
   console.error('❌ Cannot find analyzer script at:', scriptPath);
-  console.error('   Make sure vue-auth-analyzer is installed correctly.');
+  console.error('   Make sure dsh-vue-auth-analyzer is installed correctly.');
   process.exit(1);
 }
 

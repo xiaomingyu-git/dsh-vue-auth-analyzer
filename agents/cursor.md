@@ -17,10 +17,10 @@ Use when the user asks about: 按钮权限, 权限扫描, API映射, v-auth分�
 ## Installation
 
 ```bash
-cd <project-root> && npm install --save-dev vue-auth-analyzer
+cd <project-root> && npm install --save-dev dsh-vue-auth-analyzer
 ```
 
-Verify: `npx vue-auth-analyzer --help`
+Verify: `npx dsh-vue-auth-analyzer --help`
 
 ### LLM Credentials
 
@@ -35,7 +35,7 @@ If empty, set one: `export DEEPSEEK_API_KEY=sk-xxx`
 ### Step 1: Run Analysis (single command)
 
 ```bash
-cd <project-root> && npx vue-auth-analyzer --run-ai
+cd <project-root> && npx dsh-vue-auth-analyzer --run-ai
 ```
 
 This handles everything:

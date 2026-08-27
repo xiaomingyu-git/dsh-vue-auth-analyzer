@@ -1,5 +1,5 @@
 ---
-name: vue-auth-analyzer
+name: dsh-vue-auth-analyzer
 description: ⚠️ MUST run script pipeline (node scripts/vue-auth-api-analyzer.mjs), do NOT manually analyze source. For 按钮权限、权限扫描、API映射、v-auth分析、权限审计、button permission、API mapping、auth scan.
 ---
 
@@ -28,19 +28,19 @@ description: ⚠️ MUST run script pipeline (node scripts/vue-auth-api-analyzer
 
 ```bash
 # 在用户的 Vue 项目根目录下执行
-npm install --save-dev vue-auth-analyzer
+npm install --save-dev dsh-vue-auth-analyzer
 ```
 
 安装完成后验证：
 
 ```bash
-npx vue-auth-analyzer --help
+npx dsh-vue-auth-analyzer --help
 ```
 
 如果用户不想修改 package.json，也可以用 npx 免安装运行（首次会自动下载）：
 
 ```bash
-npx vue-auth-analyzer --run-ai
+npx dsh-vue-auth-analyzer --run-ai
 ```
 
 ### LLM 凭证配置
@@ -63,8 +63,8 @@ export AI_API_KEY=sk-xxx        # 通用
 
 安装后按以下优先级查找工具：
 
-1. `npx vue-auth-analyzer --help` — 如果可用，直接用 npx
-2. `node_modules/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs` — npm 安装
+1. `npx dsh-vue-auth-analyzer --help` — 如果可用，直接用 npx
+2. `node_modules/dsh-vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs` — npm 安装
 3. 环境变量 `VUE_AUTH_ANALYZER_DIR` 指向的安装目录
 4. 当前对话上下文中提供的路径
 
@@ -81,7 +81,7 @@ cd <project-root> && node <tool-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai
 或者如果通过 npx 安装：
 
 ```bash
-cd <project-root> && npx vue-auth-analyzer --run-ai
+cd <project-root> && npx dsh-vue-auth-analyzer --run-ai
 ```
 
 **不要加 --ndjson**，让进度直接输出到对话中，用户可以实时看到。

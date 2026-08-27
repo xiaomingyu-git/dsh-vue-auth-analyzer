@@ -1,11 +1,11 @@
 {
-  "name": "vue-auth-analyzer",
+  "name": "dsh-vue-auth-analyzer",
   "version": "3.0.0",
   "description": "Vue 3 按钮-权限-API 映射分析器（AI-First）：静态上下文收集 + AI 全量分析，一键生成权限与接口的完整映射。 · Vue 3 button-permission-API mapping analyzer (AI-First): static context collection + full AI analysis.",
   "type": "module",
   "main": "dsh/index.js",
   "bin": {
-    "vue-auth-analyzer": "./bin/vue-auth-analyzer.mjs"
+    "dsh-vue-auth-analyzer": "./bin/dsh-vue-auth-analyzer.mjs"
   },
   "exports": {
     ".": "./dsh/index.js",

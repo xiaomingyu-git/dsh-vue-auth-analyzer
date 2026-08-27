@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-vue-auth-analyzer 是一个 Vue 3 按钮-权限-API 映射分析工具（v3 AI-First 架构），扫描项目中带权限指令（如 `v-auth`）的按钮，通过 **静态上下文收集 + AI 全量分析**，生成 **按钮 → 权限标识 → HTTP API** 映射报告。
+dsh-vue-auth-analyzer 是一个 Vue 3 按钮-权限-API 映射分析工具（v3 AI-First 架构），扫描项目中带权限指令（如 `v-auth`）的按钮，通过 **静态上下文收集 + AI 全量分析**，生成 **按钮 → 权限标识 → HTTP API** 映射报告。
 
 核心设计：静态分析仅负责链式上下文组织（模板结构、调用图、导入关系），所有权限识别和 API 映射分析全部由 AI 完成。
 
@@ -57,7 +57,7 @@ DSH 专属代码在 `dsh/` 子目录中，有独立的 `package.json`：
 ```
 ├── package.json               ← npm 包配置（CLI 工具）
 ├── bin/
-│   └── vue-auth-analyzer.mjs  ← CLI 入口（npx 可用）
+│   └── dsh-vue-auth-analyzer.mjs  ← CLI 入口（npx 可用）
 ├── scripts/
 │   └── vue-auth-api-analyzer.mjs  ← 核心分析脚本（上下文收集 + AI 编排）
 ├── agents/                    ← 多平台 agent 指令
@@ -109,7 +109,7 @@ Step 4: --merge-ai       → .auth-analyzer/auth-mapping-merged.json (合并 AI 
 ```bash
 # 语法检查
 node --check scripts/vue-auth-api-analyzer.mjs
-node --check bin/vue-auth-analyzer.mjs
+node --check bin/dsh-vue-auth-analyzer.mjs
 
 # 端到端测试（需要一个 Vue 3 项目）
 cd <project-root>

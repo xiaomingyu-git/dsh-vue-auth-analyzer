@@ -1,5 +1,5 @@
 ---
-name: vue-auth-analyzer
+name: dsh-vue-auth-analyzer
 description: Scans Vue 3 projects for buttons with permission directives (v-auth, v-permission), traces backend API calls, and generates Button-Permission-API mapping reports. Use for button permission analysis, API mapping, auth scanning, permission auditing in Vue 3 projects.
 compatibility: Node.js >= 22, Vue 3 project with v-auth or v-permission directives
 license: MIT

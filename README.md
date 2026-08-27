@@ -1,4 +1,4 @@
-# vue-auth-analyzer
+# dsh-vue-auth-analyzer
 
 > Vue 3 按钮-权限-API 映射分析器 · 静态 AST 分析 + AI 补全
 
@@ -8,7 +8,7 @@
 
 ```bash
 # 在你的 Vue 3 项目根目录下运行
-npx vue-auth-analyzer --run-ai
+npx dsh-vue-auth-analyzer --run-ai
 ```
 
 一条命令完成全部工作：
@@ -24,9 +24,9 @@ npx vue-auth-analyzer --run-ai
 ### npm 安装（推荐）
 
 ```bash
-npm install vue-auth-analyzer
+npm install dsh-vue-auth-analyzer
 # 或全局安装
-npm install -g vue-auth-analyzer
+npm install -g dsh-vue-auth-analyzer
 ```
 
 ### 从源码使用
@@ -40,9 +40,9 @@ npm install
 ## CLI 用法
 
 ```bash
-vue-auth-analyzer [options]
+dsh-vue-auth-analyzer [options]
 # 或
-node node_modules/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs [options]
+node node_modules/dsh-vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs [options]
 ```
 
 | 命令 | 说明 | 输出 |
@@ -59,16 +59,16 @@ node node_modules/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs [options]
 
 ```bash
 # Step 1: 静态分析
-vue-auth-analyzer --static-only --ndjson
+dsh-vue-auth-analyzer --static-only --ndjson
 
 # Step 2: 准备 AI 任务
-vue-auth-analyzer --prepare-ai --ndjson
+dsh-vue-auth-analyzer --prepare-ai --ndjson
 
 # Step 3: AI 分析（由 agent 或 --run-ai 执行）
-vue-auth-analyzer --run-ai --ndjson
+dsh-vue-auth-analyzer --run-ai --ndjson
 
 # Step 4: 合并结果
-vue-auth-analyzer --merge-ai --ndjson
+dsh-vue-auth-analyzer --merge-ai --ndjson
 ```
 
 ## Agent 平台集成
@@ -96,7 +96,7 @@ vue-auth-analyzer --merge-ai --ndjson
 在 Vue 项目根目录下，让 Pi 执行：
 
 ```bash
-npx vue-auth-analyzer --run-ai
+npx dsh-vue-auth-analyzer --run-ai
 ```
 
 Pi 有 bash 工具，可以直接运行这条命令。
@@ -106,23 +106,23 @@ Pi 有 bash 工具，可以直接运行这条命令。
 安装后 Pi 启动时自动发现，无需每次手动指定命令。在终端中运行：
 
 ```bash
-mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts \
+mkdir -p ~/.pi/agent/skills/dsh-vue-auth-analyzer/scripts \
   && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md \
-     -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md \
+     -o ~/.pi/agent/skills/dsh-vue-auth-analyzer/SKILL.md \
   && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json \
-     -o ~/.pi/agent/skills/vue-auth-analyzer/package.json \
+     -o ~/.pi/agent/skills/dsh-vue-auth-analyzer/package.json \
   && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/scripts/vue-auth-api-analyzer.mjs \
-     -o ~/.pi/agent/skills/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs \
-  && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
+     -o ~/.pi/agent/skills/dsh-vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs \
+  && cd ~/.pi/agent/skills/dsh-vue-auth-analyzer && npm install
 ```
 
 安装完成后：
 
 - **自动触发**：在 Pi 中说「分析按钮权限」「扫描 API 映射」等，Pi 自动匹配并加载 skill
-- **手动触发**：输入 `/skill:vue-auth-analyzer`
-- **验证安装**：输入 `/skill:vue-auth-analyzer --help`
+- **手动触发**：输入 `/skill:dsh-vue-auth-analyzer`
+- **验证安装**：输入 `/skill:dsh-vue-auth-analyzer --help`
 
-Skill 安装在 `~/.pi/agent/skills/vue-auth-analyzer/`，全局生效，所有项目可用。
+Skill 安装在 `~/.pi/agent/skills/dsh-vue-auth-analyzer/`，全局生效，所有项目可用。
 如需仅在当前项目生效，将 `~/.pi/agent/skills/` 替换为 `.pi/skills/`。
 
 #### LLM 凭证
@@ -253,7 +253,7 @@ DSH 适配层在 `dsh/` 子目录中，包含 GUI 配置面板、skill 热加载
 1. **CONFIG 配置**：编辑 `scripts/vue-auth-api-analyzer.mjs` 中的 `CONFIG.ai`
 2. **环境变量**：`AI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY`
 3. **配置文件**：
-   - `~/.config/vue-auth-analyzer/credentials.yaml`
+   - `~/.config/dsh-vue-auth-analyzer/credentials.yaml`
    - `~/.dsh/.credentials.yaml`（向后兼容）
 
 Base URL 和模型也会根据检测到的凭证类型自动设置。

@@ -1,4 +1,4 @@
-// vue-auth-analyzer DSH adapter — bundle entry point.
+// dsh-vue-auth-analyzer DSH adapter — bundle entry point.
 // Registers agent skill + Settings namespace + HTTP routes for GUI.
 // This file lives in dsh/; the core script and metadata are one level up.
 

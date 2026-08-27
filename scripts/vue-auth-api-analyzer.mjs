@@ -893,7 +893,7 @@ function loadAICredentials() {
 
     if (!apiKey) {
       const credFiles = [
-        path.join(home, ".config", "vue-auth-analyzer", "credentials.yaml"),
+        path.join(home, ".config", "dsh-vue-auth-analyzer", "credentials.yaml"),
         path.join(home, ".dsh", ".credentials.yaml"),
       ];
       for (const credPath of credFiles) {
