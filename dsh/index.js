@@ -222,10 +222,12 @@ export function apply(ctx) {
           'x-content-type-options': 'nosniff',
         })
 
+        const pluginNodeModules = join(packageRoot, '..', 'node_modules')
+        const nodePath = process.env.NODE_PATH ? pluginNodeModules + ':' + process.env.NODE_PATH : pluginNodeModules
         const child = spawn(process.execPath, [scriptPath, ...args], {
           cwd,
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, ...loadDshCredentials() },
+          env: { ...process.env, ...loadDshCredentials(), NODE_PATH: nodePath },
         })
 
         activeRun = { child }
@@ -328,8 +330,10 @@ export function apply(ctx) {
           'cache-control': 'no-store',
         })
 
+        const pluginNodeModules2 = join(packageRoot, '..', 'node_modules')
+        const nodePath2 = process.env.NODE_PATH ? pluginNodeModules2 + ':' + process.env.NODE_PATH : pluginNodeModules2
         const child = spawn(process.execPath, [scriptPath, ...args], {
-          cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...loadDshCredentials() },
+          cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...loadDshCredentials(), NODE_PATH: nodePath2 },
         })
 
         child.stdout.on('data', (chunk) => { response.write(chunk) })
