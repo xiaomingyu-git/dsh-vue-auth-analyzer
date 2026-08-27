@@ -17,11 +17,9 @@
   "files": [
     "bin",
     "scripts/vue-auth-api-analyzer.mjs",
-    "agents",
+    "agents/SKILL.md",
     "dsh",
     "metadata.json",
-    "AGENTS.md",
-    "README.md",
     "LICENSE"
   ],
   "keywords": [

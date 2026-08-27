@@ -1,6 +1,6 @@
 {
   "name": "@dsh-vue-auth-analyzer/dsh-adapter",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "DeepSeek Harness (DSH) adapter for dsh-vue-auth-analyzer — registers as a DSH plugin with GUI settings panel and skill hot-reload.",
   "type": "module",
   "main": "index.js",
