@@ -852,74 +852,149 @@ async function prepareAITasks() {
 // SECTION: LLM Integration
 // ============================================================
 function loadAICredentials() {
-  let apiKey = CONFIG.ai.apiKey
-    || process.env.AI_API_KEY || process.env.OPENAI_API_KEY
-    || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || "";
-  let baseUrl = CONFIG.ai.baseUrl || process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.deepseek.com/v1";
-  let model = CONFIG.ai.model || process.env.AI_MODEL || process.env.OPENAI_MODEL || "deepseek-chat";
+  // Priority: CONFIG > env vars > platform config files
+  // Supports: DSH, Pi, Codex, Claude Code, Cursor, and generic env vars
+  let apiKey = CONFIG.ai.apiKey || "";
+  let baseUrl = CONFIG.ai.baseUrl || "";
+  let model = CONFIG.ai.model || "";
 
-  if (!CONFIG.ai.baseUrl && !process.env.AI_BASE_URL && !process.env.OPENAI_BASE_URL) {
-    if (process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
-      baseUrl = "https://api.openai.com/v1";
-      model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-    } else if (process.env.ANTHROPIC_API_KEY) {
-      baseUrl = "https://api.anthropic.com/v1";
-      model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+  // ── Layer 1: Environment variables (set by platform or user) ──
+  if (!apiKey) {
+    const envKeys = [
+      { key: "AI_API_KEY", url: null, mdl: null },
+      { key: "DEEPSEEK_API_KEY", url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
+      { key: "OPENAI_API_KEY", url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
+      { key: "ANTHROPIC_API_KEY", url: "https://api.anthropic.com/v1", mdl: "claude-sonnet-4-20250514" },
+      { key: "QWEN_TOKEN_PLAN_CN_API_KEY", url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+    ];
+    for (const e of envKeys) {
+      const val = process.env[e.key];
+      if (val) {
+        apiKey = val;
+        if (!baseUrl && e.url) baseUrl = e.url;
+        if (!model && e.mdl) model = e.mdl;
+        break;
+      }
+    }
+  }
+  // Also check platform-specific env vars (Codex custom providers, etc.)
+  if (!apiKey) {
+    const extraEnvKeys = ["CRS_OAI_KEY", "OPENROUTER_API_KEY"];
+    for (const k of extraEnvKeys) {
+      const val = process.env[k];
+      if (val) { apiKey = val; break; }
     }
   }
 
+  // Apply env-based URL/model overrides
+  if (!baseUrl) baseUrl = process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL || "";
+  if (!model) model = process.env.AI_MODEL || process.env.OPENAI_MODEL || "";
+
+  // ── Layer 2: Platform credential files ──
   if (!apiKey) {
     const home = process.env.HOME || "";
-    const piAuthPath = path.join(home, ".pi", "agent", "auth.json");
-    if (fs.existsSync(piAuthPath)) {
+
+    // 2a. DSH credentials (~/.dsh/.credentials.yaml)
+    const dshCredPath = path.join(home, ".dsh", ".credentials.yaml");
+    if (fs.existsSync(dshCredPath)) {
       try {
-        const piAuth = JSON.parse(fs.readFileSync(piAuthPath, "utf-8"));
-        const providerMap = {
-          deepseek: { url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
-          openai: { url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
-          anthropic: { url: "https://api.anthropic.com/v1", mdl: "claude-sonnet-4-20250514" },
-          "qwen-token-plan-cn": { url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
-          "qwen-token-plan": { url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
-          openrouter: { url: "https://openrouter.ai/api/v1", mdl: "deepseek/deepseek-chat" },
-        };
-        for (const [provider, cfg] of Object.entries(providerMap)) {
-          const entry = piAuth[provider];
-          if (entry?.key && !entry.key.startsWith("$") && !entry.key.startsWith("!")) {
-            apiKey = entry.key; baseUrl = cfg.url; model = cfg.mdl; break;
+        const content = fs.readFileSync(dshCredPath, "utf-8");
+        const patterns = [
+          { key: /DEEPSEEK_API_KEY:\s*(.+)/, url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
+          { key: /AI_API_KEY:\s*(.+)/, url: null, mdl: null },
+          { key: /OPENAI_API_KEY:\s*(.+)/, url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
+          { key: /QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/, url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+        ];
+        for (const p of patterns) {
+          const match = content.match(p.key);
+          if (match && match[1].trim()) {
+            apiKey = match[1].trim();
+            if (!baseUrl && p.url) baseUrl = p.url;
+            if (!model && p.mdl) model = p.mdl;
+            break;
           }
         }
       } catch {}
     }
 
+    // 2b. Pi agent auth (~/.pi/agent/auth.json)
     if (!apiKey) {
-      const credFiles = [
-        path.join(home, ".config", "dsh-vue-auth-analyzer", "credentials.yaml"),
-        path.join(home, ".dsh", ".credentials.yaml"),
-      ];
-      for (const credPath of credFiles) {
-        if (!fs.existsSync(credPath)) continue;
+      const piAuthPath = path.join(home, ".pi", "agent", "auth.json");
+      if (fs.existsSync(piAuthPath)) {
         try {
-          const content = fs.readFileSync(credPath, "utf-8");
+          const piAuth = JSON.parse(fs.readFileSync(piAuthPath, "utf-8"));
+          const providerMap = {
+            deepseek: { url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
+            openai: { url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
+            anthropic: { url: "https://api.anthropic.com/v1", mdl: "claude-sonnet-4-20250514" },
+            "qwen-token-plan-cn": { url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+            "qwen-token-plan": { url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+            openrouter: { url: "https://openrouter.ai/api/v1", mdl: "deepseek/deepseek-chat" },
+          };
+          for (const [provider, cfg] of Object.entries(providerMap)) {
+            const entry = piAuth[provider];
+            if (entry?.key && !entry.key.startsWith("$") && !entry.key.startsWith("!")) {
+              apiKey = entry.key;
+              if (!baseUrl) baseUrl = cfg.url;
+              if (!model) model = cfg.mdl;
+              break;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // 2c. Codex config (~/.codex/config.toml) — extract custom provider base_url + env_key
+    if (!apiKey) {
+      const codexConfigPath = path.join(home, ".codex", "config.toml");
+      if (fs.existsSync(codexConfigPath)) {
+        try {
+          const content = fs.readFileSync(codexConfigPath, "utf-8");
+          // Extract env_key from [model_providers.*] sections
+          const envKeyMatch = content.match(/env_key\s*=\s*"([^"]+)"/);
+          if (envKeyMatch) {
+            const envKeyName = envKeyMatch[1];
+            const envVal = process.env[envKeyName];
+            if (envVal) {
+              apiKey = envVal;
+              // Also extract base_url from the same section
+              const baseUrlMatch = content.match(/base_url\s*=\s*"([^"]+)"/);
+              if (baseUrlMatch && !baseUrl) baseUrl = baseUrlMatch[1];
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // 2d. Tool-specific credentials (~/.config/dsh-vue-auth-analyzer/credentials.yaml)
+    if (!apiKey) {
+      const toolCredPath = path.join(home, ".config", "dsh-vue-auth-analyzer", "credentials.yaml");
+      if (fs.existsSync(toolCredPath)) {
+        try {
+          const content = fs.readFileSync(toolCredPath, "utf-8");
           const patterns = [
             { key: /AI_API_KEY:\s*(.+)/, url: null, mdl: null },
-            { key: /OPENAI_API_KEY:\s*(.+)/, url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
             { key: /DEEPSEEK_API_KEY:\s*(.+)/, url: "https://api.deepseek.com/v1", mdl: "deepseek-chat" },
-            { key: /QWEN_TOKEN_PLAN_CN_API_KEY:\s*(.+)/, url: "https://dashscope.aliyuncs.com/compatible-mode/v1", mdl: "qwen-plus" },
+            { key: /OPENAI_API_KEY:\s*(.+)/, url: "https://api.openai.com/v1", mdl: "gpt-4o-mini" },
           ];
           for (const p of patterns) {
             const match = content.match(p.key);
             if (match && match[1].trim()) {
               apiKey = match[1].trim();
-              if (p.url) baseUrl = p.url;
-              if (p.mdl) model = p.mdl;
+              if (!baseUrl && p.url) baseUrl = p.url;
+              if (!model && p.mdl) model = p.mdl;
               break;
             }
           }
-          if (apiKey) break;
         } catch {}
       }
     }
   }
+
+  // ── Defaults ──
+  if (!baseUrl) baseUrl = "https://api.deepseek.com/v1";
+  if (!model) model = "deepseek-chat";
+
   return { apiKey, baseUrl, model };
 }
 
