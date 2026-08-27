@@ -776,6 +776,85 @@ ${filesSection}
 - confidence=low 比空 apis 好得多`;
 }
 
+// ============================================================
+// Smart Button Grouping — keep related buttons together
+// ============================================================
+function groupButtonsSmart(authNodes, functionsList, maxGroupSize = 20) {
+  if (authNodes.length <= maxGroupSize) return [authNodes];
+
+  const handlerToggles = new Map();
+  for (const fn of (functionsList || [])) {
+    if (fn.toggles && fn.toggles.length > 0) {
+      handlerToggles.set(fn.name, new Set(fn.toggles));
+    }
+  }
+
+  const buttonKeys = authNodes.map((b, idx) => {
+    const keys = new Set();
+    keys.add("file:" + b.file);
+    const allEvents = [...(b.events || []), ...(b.descendantEvents || [])];
+    for (const evt of allEvents) {
+      const handlers = extractHandlerNamesFromExpression(evt.expression);
+      for (const h of handlers) {
+        keys.add("handler:" + h);
+        const toggles = handlerToggles.get(h);
+        if (toggles) {
+          for (const t of toggles) keys.add("toggle:" + t);
+        }
+      }
+    }
+    return { idx, keys };
+  });
+
+  const parent = authNodes.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+
+  const keyToButtons = new Map();
+  for (const bk of buttonKeys) {
+    for (const key of bk.keys) {
+      if (!keyToButtons.has(key)) keyToButtons.set(key, []);
+      keyToButtons.get(key).push(bk.idx);
+    }
+  }
+  for (const [, indices] of keyToButtons) {
+    for (let i = 1; i < indices.length; i++) {
+      union(indices[0], indices[i]);
+    }
+  }
+
+  const groups = new Map();
+  for (let i = 0; i < authNodes.length; i++) {
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(authNodes[i]);
+  }
+
+  const result = [];
+  for (const [, group] of groups) {
+    if (group.length <= maxGroupSize) {
+      result.push(group);
+    } else {
+      const byFile = new Map();
+      for (const b of group) {
+        if (!byFile.has(b.file)) byFile.set(b.file, []);
+        byFile.get(b.file).push(b);
+      }
+      let currentChunk = [];
+      for (const [, fileButtons] of byFile) {
+        if (currentChunk.length + fileButtons.length > maxGroupSize && currentChunk.length > 0) {
+          result.push(currentChunk);
+          currentChunk = [];
+        }
+        currentChunk.push(...fileButtons);
+      }
+      if (currentChunk.length > 0) result.push(currentChunk);
+    }
+  }
+
+  return result;
+}
+
 async function prepareAITasks() {
   const OUTPUT_DIR = path.join(ROOT, CONFIG.outputDir);
   const staticIndexFile = path.join(OUTPUT_DIR, "static", "index.json");
@@ -827,8 +906,6 @@ async function prepareAITasks() {
 
   let cachedModules = 0;
 
-  const BUTTONS_PER_CHUNK = 15; // Split modules with more buttons than this
-
   for (const ctx of modules) {
     const moduleName = ctx.page;
     const safeName = moduleName.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_+|_+$/g, "") || "root";
@@ -859,32 +936,27 @@ async function prepareAITasks() {
       } catch {}
     }
 
-    // Split large modules into chunks to avoid response truncation
-    const buttonCount = ctx.authNodes.length;
-    const chunks = [];
-    if (buttonCount <= BUTTONS_PER_CHUNK) {
-      chunks.push(ctx.authNodes);
-    } else {
-      for (let i = 0; i < buttonCount; i += BUTTONS_PER_CHUNK) {
-        chunks.push(ctx.authNodes.slice(i, i + BUTTONS_PER_CHUNK));
-      }
-      console.log(`  ✂️  ${moduleName}: ${buttonCount} buttons → ${chunks.length} chunks`);
+    // Smart grouping: keep related buttons together (same handler/dialog/file)
+    const groups = groupButtonsSmart(ctx.authNodes, ctx.functions);
+
+    if (groups.length > 1) {
+      console.log(`  🧩 ${moduleName}: ${ctx.authNodes.length} buttons → ${groups.length} semantic groups (${groups.map(g => g.length).join("+")})`);
     }
 
-    for (let ci = 0; ci < chunks.length; ci++) {
-      const chunkNodes = chunks[ci];
-      const chunkCtx = { ...ctx, authNodes: chunkNodes };
-      const chunkId = chunks.length > 1 ? `${safeName}_part${ci + 1}` : safeName;
-      const chunkLabel = chunks.length > 1 ? `${moduleName} (part ${ci + 1}/${chunks.length})` : moduleName;
+    for (let gi = 0; gi < groups.length; gi++) {
+      const groupNodes = groups[gi];
+      const groupCtx = { ...ctx, authNodes: groupNodes };
+      const groupId = groups.length > 1 ? `${safeName}_g${gi + 1}` : safeName;
+      const groupLabel = groups.length > 1 ? `${moduleName} (group ${gi + 1}/${groups.length})` : moduleName;
 
-      const prompt = buildAIPrompt(chunkLabel, chunkCtx, fileContents);
+      const prompt = buildAIPrompt(groupLabel, groupCtx, fileContents);
 
       tasks.push({
-        id: chunkId,
+        id: groupId,
         module: moduleName,
-        buttons: chunkNodes.map(b => ({ authValue: b.authValue, name: b.name, file: b.file, tag: b.tag })),
+        buttons: groupNodes.map(b => ({ authValue: b.authValue, name: b.name, file: b.file, tag: b.tag })),
         prompt,
-        outputFile: path.join(ROOT, CONFIG.outputDir, "ai-results", chunkId + ".json"),
+        outputFile: path.join(ROOT, CONFIG.outputDir, "ai-results", groupId + ".json"),
       });
     }
 
