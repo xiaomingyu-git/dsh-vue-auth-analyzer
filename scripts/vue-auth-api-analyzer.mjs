@@ -45,7 +45,7 @@ const CONFIG = {
   outputDir: ".auth-analyzer",
   ai: {
     enabled: true,
-    maxFileSize: 120000,
+    maxFileSize: 200000,
     apiKey: "",
     baseUrl: "",
     model: "",
@@ -610,15 +610,26 @@ async function runContextCollection(ROOT, SRC_DIR, OUTPUT_DIR) {
 async function collectModuleFilesForAI(contextData, rootDir) {
   const allFiles = new Set();
   const baseDir = path.dirname(path.join(rootDir, contextData.entry));
+  const srcDir = path.join(rootDir, "src");
 
-  // All Vue files in the module
+  // 1. All Vue files in the module directory (and subdirectories)
   const vueFiles = await fg("**/*.vue", { cwd: baseDir, absolute: true });
   vueFiles.forEach(f => allFiles.add(f));
 
-  // API files referenced by imports
+  // 2. All Vue files referenced by tagFileMap (child components used in templates)
+  for (const [, relPath] of Object.entries(contextData.tagFileMap || {})) {
+    const absPath = path.join(rootDir, relPath);
+    if (isFile(absPath)) allFiles.add(absPath);
+    // Also collect sibling files in the child component's directory
+    const childDir = path.dirname(absPath);
+    const siblingVue = await fg("*.vue", { cwd: childDir, absolute: true });
+    siblingVue.forEach(f => allFiles.add(f));
+  }
+
+  // 3. API files referenced by imports
   for (const imp of (contextData.imports || [])) {
-    if (imp.source && (imp.source.includes("/api") || imp.source.startsWith("@/api"))) {
-      const srcDir = path.join(rootDir, "src");
+    if (!imp.source) continue;
+    if (imp.source.includes("/api") || imp.source.startsWith("@/api") || imp.source.includes("/utils/request")) {
       let resolved;
       if (imp.source.startsWith("@/")) resolved = path.resolve(srcDir, imp.source.slice(2));
       else if (imp.source.startsWith(".")) resolved = path.resolve(baseDir, imp.source);
@@ -628,11 +639,27 @@ async function collectModuleFilesForAI(contextData, rootDir) {
         candidates.forEach(c => { try { if (fs.statSync(c).isFile()) allFiles.add(c); } catch {} });
       }
     }
+    // Also resolve composable/useXxx imports — they may contain API calls
+    if (imp.source.includes("/composables/") || imp.source.includes("/hooks/") || imp.source.includes("/use")) {
+      let resolved;
+      if (imp.source.startsWith("@/")) resolved = path.resolve(srcDir, imp.source.slice(2));
+      else if (imp.source.startsWith(".")) resolved = path.resolve(baseDir, imp.source);
+      if (resolved) {
+        const candidates = [resolved, `${resolved}.ts`, `${resolved}.js`];
+        candidates.forEach(c => { try { if (fs.statSync(c).isFile()) allFiles.add(c); } catch {} });
+      }
+    }
   }
 
-  // Also scan for api directories
+  // 4. Scan for API directories (module-level + project-level)
   const parentApi = await fg("api/**/*.ts", { cwd: path.dirname(baseDir), absolute: true });
   parentApi.forEach(f => allFiles.add(f));
+  const srcApi = await fg("api/**/*.ts", { cwd: srcDir, absolute: true });
+  srcApi.forEach(f => allFiles.add(f));
+
+  // 5. Utils/request wrapper
+  const requestFiles = await fg("utils/request*.{ts,js}", { cwd: srcDir, absolute: true });
+  requestFiles.forEach(f => allFiles.add(f));
 
   return [...allFiles];
 }
@@ -664,27 +691,61 @@ function buildAIPrompt(moduleName, contextData, fileContents) {
     })
     .join("\n");
 
-  return `你是一个 Vue 3 + TypeScript 代码分析专家。你的任务是分析每个带权限指令（v-auth）的按钮，找出它最终触发的后端 API 接口。
+  // Build tagFileMap section for AI
+  const tagFileMapEntries = Object.entries(contextData.tagFileMap || {})
+    .filter(([tag]) => !['div','span','button','el-button','el-table','el-form','el-input','el-select','el-dialog','el-drawer','el-upload','el-popconfirm','el-tooltip','el-dropdown','el-menu','el-tab-pane','el-tabs','el-card','el-row','el-col','el-icon','template'].includes(tag))
+    .map(([tag, file]) => `  <${tag}> → ${file}`)
+    .join("\n");
 
-## 分析规则
+  return `你是一个 Vue 3 + TypeScript 代码分析专家。你的任务是分析每个带权限指令（v-auth）的按钮，**必须追踪到它最终触发的后端 HTTP API 接口**。
 
-1. **找到每个 v-auth 按钮对应的元素**，理解它的用途（从名称、标签、上下文推断）
-2. **追踪完整的调用链路**：
-   a. 找到按钮的 @click 处理函数
-   b. 如果处理函数打开了弹窗/抽屉/对话框（如 dialogVisible=true、drawerVisible=true），找到对应的子组件
-   c. 在子组件中找到确认/提交按钮的处理函数
-   d. 追踪该处理函数中的 request()/axios/fetch 调用，提取 url + method
-   e. 将原始按钮关联到这个最终的 API
-3. **只有纯展示型操作才返回空 apis**：纯预览/详情弹窗（只读展示，无确认/提交按钮）
-4. el-upload 追踪 :http-request 或 :on-change
-5. 条件表达式如 dataSource.id ? PUT : POST，根据上下文判断
-6. router.push / window.open → method: NAVIGATE, url: 目标路径
-7. 利用提供的「导入关系」和「函数调用图」作为追踪线索
+## ⛔ 核心原则：不允许返回空 apis
+
+**每个按钮都必须有明确的 API 映射结果。** 你不允许因为"追踪困难"就返回空 apis 或标记为纯 UI。
+如果你无法确定具体 API，仍然要给出最佳推测，并将 confidence 设为 "low"，在 reasoning 中说明不确定原因。
+**唯一允许返回空 apis 的情况**：按钮确实只做纯前端展示切换（如展开/折叠面板、切换 Tab），没有任何后端交互。
+
+## 🔍 必须追踪的场景（这些不是"纯UI"）
+
+### 1. 弹窗/抽屉触发按钮
+按钮点击后打开 Dialog/Drawer/Modal → 子组件中有确认/提交/保存按钮 → 该按钮调用 API
+**你必须：**
+- 从 @click handler 中找到 visible.value = true / dialogVisible = true 等
+- 通过 v-model / :visible 绑定找到对应的 <el-dialog> / <el-drawer> / 自定义组件
+- 利用下方的「组件标签→文件映射」找到子组件源码
+- 在子组件中找到 confirm/submit/save/handleOk 等处理函数
+- 追踪到 request()/axios/fetch 调用，提取 url + method
+- **将原始按钮（不是子组件按钮）关联到这个 API**
+
+### 2. 搜索/重置/刷新按钮
+按钮触发列表刷新 → 通常调用 getList/fetchData/loadData 等函数 → 内部有 GET API
+**你必须：** 追踪 handler → 找到实际的 request 调用 → 提取 GET url
+
+### 3. 下载/导出按钮
+可能通过 blob download、window.open、a.href 等方式
+**你必须：** 找到下载函数 → 提取 URL（可能是 GET 或 POST）→ method 标为 GET/DOWNLOAD
+
+### 4. 条件分支按钮
+如 scope.row.adminFlag ? iam.user.removeAdmin : iam.user.authAdmin
+**你必须：** 分析两个分支分别调用的 API，全部列出
+
+### 5. 表格行操作按钮（scope slot 内）
+编辑/删除/授权等操作按钮
+**你必须：** 追踪 @click → handler → API，注意参数可能来自 scope.row
+
+### 6. el-upload 组件
+追踪 :http-request / :on-success / :before-upload → 找到上传 API
+
+### 7. router.push / window.open
+→ method: "NAVIGATE", url: 目标路径
 
 ## 模块: ${moduleName}
 
 ## 按钮清单 (${contextData.authNodes.length} 个):
 ${buttonsList}
+
+## 组件标签 → 文件映射:
+${tagFileMapEntries || "(无自定义组件)"}
 
 ## 导入关系（API 相关）:
 ${importsList || "(无)"}
@@ -701,13 +762,18 @@ ${filesSection}
   {
     "authId": "去掉引号的权限标识",
     "label": "按钮显示文本",
-    "apis": [{ "method": "GET|POST|PUT|DELETE|NAVIGATE", "url": "/api/path", "apiFunction": "函数名", "note": "可选说明" }],
+    "apis": [{ "method": "GET|POST|PUT|DELETE|NAVIGATE|DOWNLOAD", "url": "/api/path", "apiFunction": "函数名", "note": "可选说明" }],
     "confidence": "high|medium|low",
-    "reasoning": "简要追踪路径，如：新建按钮 → 打开 AddModal → 确认按钮 → handleSubmit → POST /api/apps"
+    "reasoning": "完整追踪路径，如：新建按钮 → handleAdd → openDialog → AddModal.vue → handleSubmit → POST /api/apps"
   }
 ]
 
-**重要**：为所有 ${contextData.authNodes.length} 个按钮都输出结果。每个按钮必须有对应的输出项。`;
+**再次强调**：
+- 为所有 ${contextData.authNodes.length} 个按钮都输出结果
+- 弹窗/抽屉按钮必须追踪到子组件内的最终 API
+- 搜索/刷新按钮必须追踪到列表加载 API
+- 只有纯展示切换才返回空 apis
+- confidence=low 比空 apis 好得多`;
 }
 
 async function prepareAITasks() {
