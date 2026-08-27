@@ -33,26 +33,10 @@ Alternative: run without installing (auto-downloads on first use):
 npx dsh-vue-auth-analyzer --run-ai
 ```
 
-### LLM Credentials
-
-Check if credentials are configured:
-
-```bash
-echo $OPENAI_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
-```
-
-If empty, ask the user to set one:
-
-```bash
-export OPENAI_API_KEY=sk-xxx    # OpenAI
-export DEEPSEEK_API_KEY=sk-xxx  # DeepSeek
-export AI_API_KEY=sk-xxx        # Generic
-```
-
 ## Prerequisites
 
 - Node.js ≥ 22
-- LLM API credentials (auto-detected from env vars)
+- LLM API credentials (auto-detected from DSH config)
 
 ## Execution
 

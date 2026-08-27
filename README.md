@@ -127,13 +127,7 @@ Skill 安装在 `~/.pi/agent/skills/dsh-vue-auth-analyzer/`，全局生效，所
 
 #### LLM 凭证
 
-**无需额外配置。** 脚本会自动读取 Pi 已配置的凭证（`~/.pi/agent/auth.json`），复用你在 Pi 中 `/login` 设置的 API key。
-
-如果 Pi 中没有配置，也可以手动设置环境变量：
-
-```bash
-export DEEPSEEK_API_KEY=sk-xxx   # 或 OPENAI_API_KEY、AI_API_KEY
-```
+**无需额外配置。** 脚本会自动从 DSH 凭证（`~/.dsh/.credentials.yaml`）或 Pi 凭证（`~/.pi/agent/auth.json`）中读取 API key。
 
 ### DeepSeek Harness (DSH)
 
@@ -245,18 +239,6 @@ DSH 适配层在 `dsh/` 子目录中，包含 GUI 配置面板、skill 热加载
 | `ai` | AI 分析匹配 |
 | `static+ai` | 静态追踪到 import 路径，AI 补全了真实 HTTP URL |
 | `unresolved` | 未匹配到任何 API |
-
-## 凭证配置
-
-`--run-ai` 模式需要 LLM API 凭证，按以下优先级自动检测：
-
-1. **CONFIG 配置**：编辑 `scripts/vue-auth-api-analyzer.mjs` 中的 `CONFIG.ai`
-2. **环境变量**：`AI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY`
-3. **配置文件**：
-   - `~/.config/dsh-vue-auth-analyzer/credentials.yaml`
-   - `~/.dsh/.credentials.yaml`（向后兼容）
-
-Base URL 和模型也会根据检测到的凭证类型自动设置。
 
 ## 配置
 

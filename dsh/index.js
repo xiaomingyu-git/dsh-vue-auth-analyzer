@@ -74,6 +74,29 @@ function syncConfigToFile(settings) {
   writeFileSync(scriptPath, code, 'utf8')
 }
 
+// ─── Load DSH credentials into env ────────────────────────
+function loadDshCredentials() {
+  const credPath = join(process.env.HOME || '', '.dsh', '.credentials.yaml')
+  const env = {}
+  if (!existsSync(credPath)) return env
+  try {
+    const content = readFileSync(credPath, 'utf-8')
+    // Simple YAML key: value parser for the refs block
+    const lines = content.split('\n')
+    let inRefs = false
+    for (const line of lines) {
+      if (line.trim() === 'refs:') { inRefs = true; continue }
+      if (inRefs && /^\s{2}(\w+):\s*(.+)$/.test(line)) {
+        const m = line.match(/^\s{2}(\w+):\s*(.+)$/)
+        if (m) env[m[1]] = m[2].trim()
+      } else if (inRefs && /^\S/.test(line)) {
+        inRefs = false
+      }
+    }
+  } catch {}
+  return env
+}
+
 // ─── Active run state (for cancel/status) ───────────────
 let activeRun = null // { child, abortController }
 
@@ -202,7 +225,7 @@ export function apply(ctx) {
         const child = spawn(process.execPath, [scriptPath, ...args], {
           cwd,
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env },
+          env: { ...process.env, ...loadDshCredentials() },
         })
 
         activeRun = { child }
@@ -306,7 +329,7 @@ export function apply(ctx) {
         })
 
         const child = spawn(process.execPath, [scriptPath, ...args], {
-          cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env },
+          cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...loadDshCredentials() },
         })
 
         child.stdout.on('data', (chunk) => { response.write(chunk) })

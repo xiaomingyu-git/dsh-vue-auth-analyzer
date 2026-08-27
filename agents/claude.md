@@ -35,23 +35,6 @@ Alternative — run without installing (auto-downloads on first use):
 npx dsh-vue-auth-analyzer --run-ai
 ```
 
-### LLM Credentials
-
-Check if API credentials are available:
-
-```bash
-echo $OPENAI_API_KEY $ANTHROPIC_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
-```
-
-If all empty, prompt the user to set one:
-
-```bash
-export OPENAI_API_KEY=sk-xxx      # OpenAI
-export ANTHROPIC_API_KEY=sk-ant-xxx  # Anthropic
-export DEEPSEEK_API_KEY=sk-xxx    # DeepSeek
-export AI_API_KEY=sk-xxx          # Generic
-```
-
 ## Finding the Tool
 
 After installation, locate dsh-vue-auth-analyzer in this order:
@@ -82,8 +65,6 @@ This handles everything automatically:
 4. Merging AI results into final report
 
 **Do NOT use --ndjson** — let progress output stream naturally.
-
-Credentials are auto-detected from environment variables or config files.
 
 ### Step 2: Present Results
 

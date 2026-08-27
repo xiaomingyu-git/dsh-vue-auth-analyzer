@@ -27,20 +27,6 @@ Verify: `npx dsh-vue-auth-analyzer --help`
 
 Alternative: `npx dsh-vue-auth-analyzer --run-ai` (auto-downloads)
 
-### LLM Credentials
-
-```bash
-echo $OPENAI_API_KEY $ANTHROPIC_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
-```
-
-If empty, set one:
-
-```bash
-export DEEPSEEK_API_KEY=sk-xxx  # DeepSeek
-export OPENAI_API_KEY=sk-xxx    # OpenAI
-export AI_API_KEY=sk-xxx        # Generic
-```
-
 ## Finding the Tool
 
 1. `npx dsh-vue-auth-analyzer --help`

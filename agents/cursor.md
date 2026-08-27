@@ -22,14 +22,6 @@ cd <project-root> && npm install --save-dev dsh-vue-auth-analyzer
 
 Verify: `npx dsh-vue-auth-analyzer --help`
 
-### LLM Credentials
-
-```bash
-echo $OPENAI_API_KEY $ANTHROPIC_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
-```
-
-If empty, set one: `export DEEPSEEK_API_KEY=sk-xxx`
-
 ## Execution
 
 ### Step 1: Run Analysis (single command)

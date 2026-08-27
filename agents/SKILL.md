@@ -43,22 +43,6 @@ npx dsh-vue-auth-analyzer --help
 npx dsh-vue-auth-analyzer --run-ai
 ```
 
-### LLM 凭证配置
-
-`--run-ai` 模式需要 LLM API 凭证。检查是否已配置：
-
-```bash
-echo $OPENAI_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
-```
-
-如果都为空，提示用户设置环境变量（任选一个）：
-
-```bash
-export OPENAI_API_KEY=sk-xxx    # OpenAI
-export DEEPSEEK_API_KEY=sk-xxx  # DeepSeek
-export AI_API_KEY=sk-xxx        # 通用
-```
-
 ## 定位工具路径
 
 安装后按以下优先级查找工具：
@@ -91,8 +75,6 @@ cd <project-root> && npx dsh-vue-auth-analyzer --run-ai
 2. 按模块分组，准备 AI 任务文件（所有按钮都包含在内）
 3. 调用 LLM 分析每个按钮的权限-API 映射
 4. 合并 AI 结果为最终报告
-
-凭证自动从环境变量或配置文件读取，无需手动配置。
 
 **不要自己读任务文件、不要自己启动 subagent、不要自己写合并脚本、不要分步执行。**
 
