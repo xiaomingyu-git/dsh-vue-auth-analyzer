@@ -1,100 +1,109 @@
-# Vue Auth-API Analyzer — Pi Agent Instructions
+# Vue Auth-API Analyzer v3 — Pi Agent Instructions
 
-## When to Use
+## Architecture (v3 AI-First)
 
-Trigger this tool when the user asks about:
-- 按钮权限 / 权限扫描 / API映射 / v-auth分析 / 权限审计
-- button permission / API mapping / auth scan / permission audit
+- Static analysis only collects context (template structure, call graph, imports)
+- ALL permission + API mapping analysis is done by AI
+- No more matched/unmatched distinction — every button goes to AI
 
-## ⚠️ Critical Constraint
+## Trigger
 
-**MUST use the script pipeline.** Never manually analyze Vue source code, grep for permissions, or guess API endpoints. The script handles all analysis.
+Use when the user asks about: 按钮权限, 权限扫描, API映射, v-auth分析, 权限审计, button permission, API mapping, auth scan.
+
+## ⚠️ Mandatory Rule
+
+**You MUST run the script pipeline.** Do NOT manually analyze Vue source code. All analysis is performed by `scripts/vue-auth-api-analyzer.mjs`.
 
 ## Installation
 
-### Quick start (no install needed)
-
-Just run directly in your Vue project:
+Before running analysis, check if the tool is installed. **If not, install it for the user:**
 
 ```bash
-npx vue-auth-analyzer --run-ai
+cd <project-root>
+npm install --save-dev vue-auth-analyzer
 ```
 
-### Install as Pi Skill (optional, for auto-discovery)
+Verify: `npx vue-auth-analyzer --help`
 
-If you want Pi to automatically discover and load this tool when you mention permissions or API mapping:
-
-```bash
-mkdir -p ~/.pi/agent/skills/vue-auth-analyzer/scripts && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/SKILL.md -o ~/.pi/agent/skills/vue-auth-analyzer/SKILL.md && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/pi-skill/vue-auth-analyzer/package.json -o ~/.pi/agent/skills/vue-auth-analyzer/package.json && curl -sL https://raw.githubusercontent.com/xiaomingyu-git/dsh-vue-auth-analyzer/main/scripts/vue-auth-api-analyzer.mjs -o ~/.pi/agent/skills/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs && cd ~/.pi/agent/skills/vue-auth-analyzer && npm install
-```
-
-Then use `/skill:vue-auth-analyzer` in Pi, or just say "analyze button permissions".
+Alternative: `npx vue-auth-analyzer --run-ai` (auto-downloads)
 
 ### LLM Credentials
 
-**No extra setup needed.** The script automatically reads Pi's credentials from `~/.pi/agent/auth.json` (the keys you set via `/login` in Pi).
-
-Only if Pi has no credentials configured, check and set manually:
-
 ```bash
-echo $OPENAI_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
-# If empty:
-export OPENAI_API_KEY=sk-xxx
+echo $OPENAI_API_KEY $ANTHROPIC_API_KEY $AI_API_KEY $DEEPSEEK_API_KEY
 ```
 
-## Tool Discovery
+If empty, set one:
 
-After installation, find vue-auth-analyzer in priority order:
+```bash
+export DEEPSEEK_API_KEY=sk-xxx  # DeepSeek
+export OPENAI_API_KEY=sk-xxx    # OpenAI
+export AI_API_KEY=sk-xxx        # Generic
+```
+
+## Finding the Tool
+
 1. `npx vue-auth-analyzer --help`
 2. `node_modules/vue-auth-analyzer/scripts/vue-auth-api-analyzer.mjs`
-3. Path provided by user or environment variable `VUE_AUTH_ANALYZER_DIR`
+3. User-provided path
 
-## How to Run
+Store as `<tool-dir>`.
 
-### Single Command (Recommended)
+## Execution
 
-```bash
-cd <project-root> && npx vue-auth-analyzer --run-ai
-```
-
-Or with explicit path:
+### Step 1: Run Analysis (single command)
 
 ```bash
 cd <project-root> && node <tool-dir>/scripts/vue-auth-api-analyzer.mjs --run-ai
 ```
 
-This automatically:
-1. Runs static AST analysis on Vue SFC files
-2. Prepares AI tasks for unmatched buttons
-3. Calls LLM to analyze remaining buttons
-4. Merges all results into final report
-
-Do NOT add `--ndjson`. Let progress stream naturally.
-
-### Reading Results
+Or via npx:
 
 ```bash
-node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log(JSON.stringify(d.stats, null, 2)); d.pages.forEach(p => { console.log('\n## ' + p.page); p.buttons.forEach(b => { const apis = b.apis.map(a => a.method + ' ' + a.url).join(', ') || '(UI only)'; console.log('  ' + b.authId + ' → ' + apis + ' [' + b.source + '/' + b.confidence + ']'); }); })"
+cd <project-root> && npx vue-auth-analyzer --run-ai
+```
+
+This handles everything:
+1. Context collection (Vue SFC parsing, template structure, call graph, imports)
+2. Module grouping and AI task preparation (all buttons included)
+3. LLM-powered permission + API analysis for every button
+4. Merging AI results into final report
+
+**Do NOT use --ndjson.**
+
+### Step 2: Present Results
+
+```bash
+node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log(JSON.stringify(d.stats, null, 2)); d.pages.forEach(p => { console.log('\n## ' + p.page); p.buttons.forEach(b => { const apis = b.apis.map(a => a.method + ' ' + a.url).join(', ') || '(UI only)'; console.log('  ' + b.authId + ' → ' + apis + ' [ai/' + b.confidence + ']'); }); })"
 ```
 
 Present: coverage stats, per-page mapping table, low-confidence entries, recommendations.
 
-## What NOT to Do
+## Forbidden Actions
 
-- ❌ Read Vue files manually to find permissions
-- ❌ Write Markdown reports (script outputs JSON)
-- ❌ List function names as APIs (must be HTTP method + URL)
-- ❌ Split pipeline into separate steps
-- ❌ Write custom analysis scripts
+- ❌ Manually reading Vue files to find permissions or APIs
+- ❌ Generating Markdown reports (all output is script-generated JSON)
+- ❌ Listing function names as API mappings ("app.getAppsList" ≠ "GET /iam/apps")
+- ❌ Running --static-only / --prepare-ai / --merge-ai separately
+- ❌ Writing custom analysis or merge scripts
 
-## Output Location
+## Output Files
 
-All output in `.auth-analyzer/` under project root. Key file: `auth-mapping-merged.json`.
+All in `.auth-analyzer/` under the project root:
 
-## Customization
+| File | Purpose |
+|------|---------|
+| `auth-mapping-merged.json` | Final merged report (AI analysis) |
+| `static/<module>.json` | Per-module context (structure, imports, call graph) |
+| `ai-tasks/<module>.json` | Per-module AI task files (with prompts) |
+| `ai-results/<module>.json` | Per-module AI analysis results |
+| `.ai-auth-cache.json` | Incremental cache |
 
-Edit `CONFIG` in `scripts/vue-auth-api-analyzer.mjs`:
-- `viewsDir` (default: `src/views`)
-- `authDirectiveName` (default: `auth`; use `permission` for v-permission)
-- `i18nFile` (default: `src/lang/package/zh-cn.ts`; set `null` to skip)
-- `excludePatterns` (glob patterns to exclude from scanning)
+## Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `viewsDir` | `src/views` | Vue pages directory |
+| `authDirectiveName` | `auth` | Use `permission` for v-permission |
+| `i18nFile` | `src/lang/package/zh-cn.ts` | Set `null` to skip i18n |
+| `excludePatterns` | `["**/components/**", ...]` | Directories to exclude |

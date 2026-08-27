@@ -4,9 +4,9 @@
 
 ## 项目概述
 
-vue-auth-analyzer 是一个 Vue 3 按钮-权限-API 映射分析工具，扫描项目中带权限指令（如 `v-auth`）的按钮，追踪其调用的后端 API 接口，生成 **按钮 → 权限标识 → HTTP API** 映射报告。
+vue-auth-analyzer 是一个 Vue 3 按钮-权限-API 映射分析工具（v3 AI-First 架构），扫描项目中带权限指令（如 `v-auth`）的按钮，通过 **静态上下文收集 + AI 全量分析**，生成 **按钮 → 权限标识 → HTTP API** 映射报告。
 
-采用双轨分析：静态 AST 分析 + AI 补全（支持 `--run-ai` 脚本直调 LLM）。
+核心设计：静态分析仅负责链式上下文组织（模板结构、调用图、导入关系），所有权限识别和 API 映射分析全部由 AI 完成。
 
 可作为独立 CLI 工具使用，也可通过各 agent 平台的指令文件集成。
 
@@ -59,7 +59,7 @@ DSH 专属代码在 `dsh/` 子目录中，有独立的 `package.json`：
 ├── bin/
 │   └── vue-auth-analyzer.mjs  ← CLI 入口（npx 可用）
 ├── scripts/
-│   └── vue-auth-api-analyzer.mjs  ← 核心分析脚本（静态分析 + AI 编排）
+│   └── vue-auth-api-analyzer.mjs  ← 核心分析脚本（上下文收集 + AI 编排）
 ├── agents/                    ← 多平台 agent 指令
 │   ├── SKILL.md               ← 通用 agent 指令
 │   ├── codex.md               ← OpenAI Codex 指令
@@ -79,24 +79,24 @@ DSH 专属代码在 `dsh/` 子目录中，有独立的 `package.json`：
 
 ## 核心架构
 
-### 四步流水线
+### 四步流水线（v3 AI-First）
 
 ```
-Step 1: --static-only    → .auth-analyzer/static/<module>.json   (AST 解析)
-Step 2: --prepare-ai     → .auth-analyzer/ai-tasks/<module>.json (分组 + prompt)
-Step 3: --run-ai         → .auth-analyzer/ai-results/<module>.json (脚本直接调 LLM)
-Step 4: --merge-ai       → .auth-analyzer/auth-mapping-merged.json (合并)
+Step 1: --static-only    → .auth-analyzer/static/<module>.json   (上下文收集：模板结构、调用图、导入关系)
+Step 2: --prepare-ai     → .auth-analyzer/ai-tasks/<module>.json (所有按钮 → AI 任务)
+Step 3: --run-ai         → .auth-analyzer/ai-results/<module>.json (AI 权限+API 分析)
+Step 4: --merge-ai       → .auth-analyzer/auth-mapping-merged.json (合并 AI 结果)
 ```
 
 ### 关键设计决策
 
+- **AI-First 架构**：静态分析仅收集上下文（模板结构、函数调用图、导入关系、文件内容），不再尝试解析 HTTP URL；所有权限识别和 API 映射分析全部由 AI 完成
+- **全量 AI 分析**：不再区分 matched/unmatched/partial，所有按钮都交由 AI 分析
 - **Per-module 文件结构**：所有中间产物按模块拆分，避免单文件过大导致 agent JSON 解析失败
-- **Plan A 全模块上下文**：AI prompt 包含模块内所有按钮（✅已确认 + ❓待分析 + ⚠️部分解析），已确认按钮作为推理锚点
 - **输出目录 `.auth-analyzer/`**：隐藏目录，不会被项目 `pnpm build` 清理
 - **绝对路径**：taskFile/outputFile 均为绝对路径，避免 agent 拼接错误
 - **缓存机制**：已分析的模块自动跳过，`--no-cache` 强制重分析
 - **分批并发**：每批最多 2 个 LLM 调用，避免 429 限流
-- **Partial match 补全**：静态分析追踪到 import 路径但未解析出 HTTP URL 的按钮，标记为 ⚠️ 部分解析，交由 AI 补全
 
 ## 开发注意事项
 

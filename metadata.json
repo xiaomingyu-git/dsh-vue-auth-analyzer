@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0",
+  "version": "3.0.0",
   "name": "vue-auth-analyzer",
   "description": "Vue 3 按钮-权限-API 映射分析器",
   "outputDir": ".auth-analyzer",
@@ -37,40 +37,40 @@
     {
       "step": 1,
       "cmd": "--static-only",
-      "output": ".auth-analyzer/auth-mapping.json",
-      "desc": "Static AST analysis"
+      "output": ".auth-analyzer/static/<module>.json",
+      "desc": "Collect context (template structure, call graph, imports)"
     },
     {
       "step": 2,
       "cmd": "--prepare-ai",
       "output": ".auth-analyzer/ai-tasks/ (index + per-module)",
-      "desc": "Prepare AI tasks"
+      "desc": "Prepare AI tasks (all buttons → AI)"
     },
     {
       "step": 3,
       "cmd": "--run-ai OR subagents",
       "output": ".auth-analyzer/ai-results/<module>.json",
-      "desc": "AI analysis (script or subagent)"
+      "desc": "AI permission + API analysis"
     },
     {
       "step": 4,
       "cmd": "--merge-ai",
       "output": ".auth-analyzer/auth-mapping-merged.json",
-      "desc": "Merge static + AI results"
+      "desc": "Merge AI results into final report"
     }
   ],
   "outputs": [
     {
       "file": "static/index.json",
-      "desc": "Static analysis index (small)"
+      "desc": "Context collection index"
     },
     {
       "file": "static/<module>.json",
-      "desc": "Per-module static results"
+      "desc": "Per-module context (template structure, imports, call graph)"
     },
     {
       "file": "auth-mapping.json",
-      "desc": "Legacy monolith (backward compat)"
+      "desc": "Context data (backward compat filename)"
     },
     {
       "file": "ai-tasks/index.json",

@@ -1,4 +1,4 @@
-# Vue Auth-API Analyzer — Claude Code Instructions
+# Vue Auth-API Analyzer v3 — Claude Code Instructions
 
 ## Trigger
 
@@ -7,6 +7,12 @@ Use when the user asks about: 按钮权限, 权限扫描, API映射, v-auth分�
 ## ⚠️ Mandatory Rule
 
 **You MUST run the script pipeline.** Do NOT manually analyze Vue source code. All analysis is performed by `scripts/vue-auth-api-analyzer.mjs`.
+
+## Architecture (v3 AI-First)
+
+- Static analysis only collects context (template structure, call graph, imports)
+- ALL permission + API mapping analysis is done by AI
+- No more matched/unmatched distinction — every button goes to AI
 
 ## Installation
 
@@ -70,27 +76,27 @@ cd <project-root> && npx vue-auth-analyzer --run-ai
 ```
 
 This handles everything automatically:
-1. Static AST analysis (Vue SFC parsing, tracking v-auth → @click → request() → HTTP method + URL)
-2. Module grouping and AI task preparation
-3. LLM-powered analysis for unmatched buttons (cached modules skipped)
-4. Merging static + AI results into final report
+1. Context collection (Vue SFC parsing, template structure, call graph, imports)
+2. Module grouping and AI task preparation (all buttons included)
+3. LLM-powered permission + API analysis for every button
+4. Merging AI results into final report
 
 **Do NOT use --ndjson** — let progress output stream naturally.
 
-Credentials are auto-detected from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AI_API_KEY`) or config files.
+Credentials are auto-detected from environment variables or config files.
 
 ### Step 2: Present Results
 
 Read the report using bash (not the Read tool, which adds line numbers):
 
 ```bash
-node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log(JSON.stringify(d.stats, null, 2)); d.pages.forEach(p => { console.log('\n## ' + p.page); p.buttons.forEach(b => { const apis = b.apis.map(a => a.method + ' ' + a.url).join(', ') || '(UI only)'; console.log('  ' + b.authId + ' → ' + apis + ' [' + b.source + '/' + b.confidence + ']'); }); })"
+node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log(JSON.stringify(d.stats, null, 2)); d.pages.forEach(p => { console.log('\n## ' + p.page); p.buttons.forEach(b => { const apis = b.apis.map(a => a.method + ' ' + a.url).join(', ') || '(UI only)'; console.log('  ' + b.authId + ' → ' + apis + ' [ai/' + b.confidence + ']'); }); })"
 ```
 
 Present:
 1. Coverage statistics
 2. Per-page button-permission-API mapping table
-3. Low-confidence / failed entries
+3. Low-confidence entries
 4. Recommendations
 
 ## Forbidden Actions
@@ -107,8 +113,8 @@ All in `.auth-analyzer/` under the project root:
 
 | File | Purpose |
 |------|---------|
-| `auth-mapping-merged.json` | Final merged report (static + AI) |
-| `static/<module>.json` | Per-module static analysis results |
+| `auth-mapping-merged.json` | Final merged report (AI analysis) |
+| `static/<module>.json` | Per-module context (structure, imports, call graph) |
 | `ai-tasks/<module>.json` | Per-module AI task files (with prompts) |
 | `ai-results/<module>.json` | Per-module AI analysis results |
 | `.ai-auth-cache.json` | Incremental cache |

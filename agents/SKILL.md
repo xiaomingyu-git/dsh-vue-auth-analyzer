@@ -3,9 +3,15 @@ name: vue-auth-analyzer
 description: ⚠️ MUST run script pipeline (node scripts/vue-auth-api-analyzer.mjs), do NOT manually analyze source. For 按钮权限、权限扫描、API映射、v-auth分析、权限审计、button permission、API mapping、auth scan.
 ---
 
-# Vue Auth-API Analyzer
+# Vue Auth-API Analyzer v3 (AI-First)
 
-扫描 Vue 3 项目中所有带权限指令（如 `v-auth`) 的按钮，追踪其调用的后端 API 接口，生成完整的 **按钮 → 权限标识 → HTTP API** 映射报告。
+扫描 Vue 3 项目中所有带权限指令（如 `v-auth`) 的按钮，通过 **静态上下文收集 + AI 全量分析**，生成完整的 **按钮 → 权限标识 → HTTP API** 映射报告。
+
+## 核心架构（v3）
+
+- **静态分析仅收集上下文**：解析模板结构、构建调用图骨架、收集导入关系和文件内容
+- **AI 负责全部权限+API分析**：所有按钮都交由 AI 分析，不再区分"已匹配/未匹配"
+- 静态分析不再尝试解析 HTTP URL，只提供结构化上下文给 AI 作为推理依据
 
 ## ⛔ 禁止事项（违反则结果无效）
 
@@ -81,10 +87,10 @@ cd <project-root> && npx vue-auth-analyzer --run-ai
 **不要加 --ndjson**，让进度直接输出到对话中，用户可以实时看到。
 
 这条命令自动完成以下所有工作：
-1. 静态 AST 分析（解析 Vue SFC，追踪 v-auth → @click → request() → HTTP method + URL）
-2. 按模块分组，准备 AI 任务文件
-3. 调用 LLM 分析未匹配的按钮（已有结果的模块自动跳过）
-4. 合并静态结果 + AI 结果为最终报告
+1. **上下文收集**：解析 Vue SFC 模板结构、构建函数调用图、收集导入关系和相关文件
+2. 按模块分组，准备 AI 任务文件（所有按钮都包含在内）
+3. 调用 LLM 分析每个按钮的权限-API 映射
+4. 合并 AI 结果为最终报告
 
 凭证自动从环境变量或配置文件读取，无需手动配置。
 
@@ -95,13 +101,13 @@ cd <project-root> && npx vue-auth-analyzer --run-ai
 **用 bash 读取报告**（不要用 read tool，它会加行号导致 JSON 解析失败）：
 
 ```bash
-node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log(JSON.stringify(d.stats, null, 2)); d.pages.forEach(p => { console.log('\n## ' + p.page); p.buttons.forEach(b => { const apis = b.apis.map(a => a.method + ' ' + a.url).join(', ') || '(纯UI)'; console.log('  ' + b.authId + ' → ' + apis + ' [' + b.source + '/' + b.confidence + ']'); }); })"
+node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log(JSON.stringify(d.stats, null, 2)); d.pages.forEach(p => { console.log('\n## ' + p.page); p.buttons.forEach(b => { const apis = b.apis.map(a => a.method + ' ' + a.url).join(', ') || '(纯UI)'; console.log('  ' + b.authId + ' → ' + apis + ' [ai/' + b.confidence + ']'); }); })"
 ```
 
 向用户展示：
 1. 覆盖率统计
 2. 每页按钮-权限-API 映射表（包含 HTTP method + URL）
-3. 低置信度/失败条目
+3. 低置信度条目
 4. 建议
 
 ## 输出文件
@@ -109,12 +115,12 @@ node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log
 | 文件 | 用途 |
 |------|------|
 | `.auth-analyzer/auth-mapping-merged.json` | **最终合并报告** |
-| `.auth-analyzer/static/index.json` | 静态分析索引 |
-| `.auth-analyzer/static/<module>.json` | 每模块静态分析结果 |
+| `.auth-analyzer/static/index.json` | 上下文收集索引 |
+| `.auth-analyzer/static/<module>.json` | 每模块上下文（模板结构、导入、调用图） |
 | `.auth-analyzer/ai-tasks/index.json` | AI 任务索引 |
 | `.auth-analyzer/ai-tasks/<module>.json` | 每模块 AI 任务（含 prompt） |
 | `.auth-analyzer/ai-results/<module>.json` | 每模块 AI 结果 |
-| `.auth-analyzer/auth-mapping-ai.json` | AI 补全汇总 |
+| `.auth-analyzer/auth-mapping-ai.json` | AI 分析汇总 |
 | `.auth-analyzer/.ai-auth-cache.json` | 增量缓存 |
 
 ## 配置
@@ -128,7 +134,6 @@ node -e "const d=require('.auth-analyzer/auth-mapping-merged.json'); console.log
 ## 适配
 
 - **v-permission**: 搜索 `prop.name === "auth"` 替换为 `"permission"`
-- **非 request()**: 修改 `resolveApiCall` 识别你的封装函数
 - **无 i18n**: `CONFIG.i18nFile = null`
 
 ## 开发者文档
