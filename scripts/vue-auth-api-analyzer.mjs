@@ -827,6 +827,8 @@ async function prepareAITasks() {
 
   let cachedModules = 0;
 
+  const BUTTONS_PER_CHUNK = 15; // Split modules with more buttons than this
+
   for (const ctx of modules) {
     const moduleName = ctx.page;
     const safeName = moduleName.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/^_+|_+$/g, "") || "root";
@@ -842,11 +844,11 @@ async function prepareAITasks() {
       continue;
     }
 
-    // Collect files for AI context
+    // Collect files for AI context (shared across chunks)
     const relevantFiles = await collectModuleFilesForAI(ctx, ROOT);
     const fileContents = [];
     let totalSize = 0;
-    const MAX_SIZE = CONFIG.ai.maxFileSize || 120000;
+    const MAX_SIZE = CONFIG.ai.maxFileSize || 200000;
 
     for (const filePath of relevantFiles) {
       try {
@@ -857,15 +859,34 @@ async function prepareAITasks() {
       } catch {}
     }
 
-    const prompt = buildAIPrompt(moduleName, ctx, fileContents);
+    // Split large modules into chunks to avoid response truncation
+    const buttonCount = ctx.authNodes.length;
+    const chunks = [];
+    if (buttonCount <= BUTTONS_PER_CHUNK) {
+      chunks.push(ctx.authNodes);
+    } else {
+      for (let i = 0; i < buttonCount; i += BUTTONS_PER_CHUNK) {
+        chunks.push(ctx.authNodes.slice(i, i + BUTTONS_PER_CHUNK));
+      }
+      console.log(`  ✂️  ${moduleName}: ${buttonCount} buttons → ${chunks.length} chunks`);
+    }
 
-    tasks.push({
-      id: safeName,
-      module: moduleName,
-      buttons: ctx.authNodes.map(b => ({ authValue: b.authValue, name: b.name, file: b.file, tag: b.tag })),
-      prompt,
-      outputFile: path.join(ROOT, CONFIG.outputDir, "ai-results", safeName + ".json"),
-    });
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunkNodes = chunks[ci];
+      const chunkCtx = { ...ctx, authNodes: chunkNodes };
+      const chunkId = chunks.length > 1 ? `${safeName}_part${ci + 1}` : safeName;
+      const chunkLabel = chunks.length > 1 ? `${moduleName} (part ${ci + 1}/${chunks.length})` : moduleName;
+
+      const prompt = buildAIPrompt(chunkLabel, chunkCtx, fileContents);
+
+      tasks.push({
+        id: chunkId,
+        module: moduleName,
+        buttons: chunkNodes.map(b => ({ authValue: b.authValue, name: b.name, file: b.file, tag: b.tag })),
+        prompt,
+        outputFile: path.join(ROOT, CONFIG.outputDir, "ai-results", chunkId + ".json"),
+      });
+    }
 
     emit({ type: "ai-progress", current: tasks.length + cachedModules, total: moduleCount, page: moduleName, status: "pending" });
   }
@@ -1072,7 +1093,7 @@ async function callLLM(config, messages, maxRetries = 3) {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + config.apiKey },
         body: JSON.stringify({
-          model: config.model, messages, temperature: 0.1, max_tokens: 4096,
+          model: config.model, messages, temperature: 0.1, max_tokens: 16384,
           response_format: { type: "json_object" },
         }),
         signal: AbortSignal.timeout(120000),
